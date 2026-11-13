@@ -83,7 +83,30 @@ var app = builder.Build();
 // Fail fast when the signing key is missing outside Development.
 app.Services.GetRequiredService<JwtOptions>();
 
+// Deployment flags for the Production demo host (Render), both off by default so local
+// development and the API-only pipeline are unchanged:
+// - Spa:Serving serves the built React app from wwwroot on this same origin.
+// - Database:RunMigrationsAndSeed applies migrations and the demo seed outside Development.
+var spaServing = app.Configuration.GetValue<bool>("Spa:Serving");
+
 app.UseExceptionHandler();
+
+if (spaServing)
+{
+    var spaIndexPath = ResolveSpaIndexPath(app.Environment);
+    if (!File.Exists(spaIndexPath))
+    {
+        // A missing frontend build would otherwise surface as a blank page on every
+        // route; fail at startup with the reason instead.
+        throw new InvalidOperationException(
+            $"Spa:Serving is enabled but the SPA entry point was not found at '{spaIndexPath}'. "
+            + "Copy the frontend build output into wwwroot before enabling SPA serving.");
+    }
+
+    app.UseDefaultFiles();
+    app.UseStaticFiles();
+}
+
 // Routing-level failures (unknown route, wrong method) have no body of their own.
 // ADR-0004 §1 requires every error, including those, to be RFC 7807 problem+json.
 app.UseStatusCodePages(async context =>
@@ -108,7 +131,13 @@ app.UseAuthorization();
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
+}
 
+// Development always migrates and seeds locally. Any other environment opts in through
+// Database:RunMigrationsAndSeed so a container host can prepare its database at startup;
+// a database error then fails startup, like a missing signing key does.
+if (app.Environment.IsDevelopment() || app.Configuration.GetValue<bool>("Database:RunMigrationsAndSeed"))
+{
     using var scope = app.Services.CreateScope();
     var dbContext = scope.ServiceProvider.GetRequiredService<CrudWorksDbContext>();
     var passwordHasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
@@ -129,6 +158,34 @@ app.MapHealthChecks("/api/health", new HealthCheckOptions
     }
 });
 
+if (spaServing)
+{
+    // Cached once: the SPA build ships inside the image and does not change at runtime.
+    var spaIndexHtml = await File.ReadAllTextAsync(ResolveSpaIndexPath(app.Environment));
+
+    // Last in the route table: everything the API routes and static files did not
+    // handle. Unknown /api routes keep the RFC 7807 404 contract; any other path is a
+    // React Router deep link and gets index.html.
+    app.MapFallback(async context =>
+    {
+        if (context.Request.Path.StartsWithSegments("/api"))
+        {
+            const int status = StatusCodes.Status404NotFound;
+            context.Response.StatusCode = status;
+            await context.Response.WriteAsJsonAsync(
+                ApiProblemDetails.Create(context, status, StatusTitle(status)),
+                options: null,
+                contentType: ApiProblemDetails.ContentType,
+                context.RequestAborted);
+            return;
+        }
+
+        context.Response.StatusCode = StatusCodes.Status200OK;
+        context.Response.ContentType = "text/html; charset=utf-8";
+        await context.Response.WriteAsync(spaIndexHtml, context.RequestAborted);
+    });
+}
+
 app.Run();
 
 // Titles for routing-level failures, which never reach a controller.
@@ -141,5 +198,12 @@ static string StatusTitle(int status) => status switch
     405 => "Method not allowed.",
     _ => "The request could not be completed.",
 };
+
+// WebRootPath is null when no wwwroot directory exists (a source checkout without a
+// frontend build), so fall back to the conventional location.
+static string ResolveSpaIndexPath(IWebHostEnvironment environment) =>
+    Path.Combine(
+        environment.WebRootPath ?? Path.Combine(environment.ContentRootPath, "wwwroot"),
+        "index.html");
 
 public partial class Program { }
