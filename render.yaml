@@ -1,0 +1,22 @@
+# Render Blueprint for IT_CrudWorks.
+# Render auto-detects this file at the repository root.
+services:
+  - type: web
+    name: crudworks
+    runtime: docker
+    # Dockerfile lives under project/; build context is the repo root.
+    dockerfilePath: project/Dockerfile
+    healthCheckPath: /api/health
+    plan: free
+    region: oregon
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: Jwt__SigningKey
+        sync: false
+      - key: Database__RunMigrationsAndSeed
+        value: "true"
+      - key: Spa__Serving
+        value: "true"
+      # Cors__AllowedOrigin is intentionally unset: the SPA and the API share
+      # one origin in this deployment, so CORS is not exercised.
