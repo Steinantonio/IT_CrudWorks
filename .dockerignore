@@ -1,0 +1,15 @@
+**/bin/
+**/obj/
+project/frontend/node_modules/
+project/frontend/dist/
+*.db
+*.db-shm
+*.db-wal
+.git/
+.vs/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+node_modules/
+dist/

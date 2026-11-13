@@ -1,18 +1,21 @@
 # syntax=docker/dockerfile:1
 
+# Render builds with the repository root as the build context, so all paths
+# below are relative to that root.
+
 # Stage 1: build the React SPA.
 FROM node:24-alpine AS frontend
 WORKDIR /src/frontend
-COPY frontend/package.json frontend/package-lock.json ./
+COPY project/frontend/package.json project/frontend/package-lock.json ./
 RUN npm ci
-COPY frontend/ ./
+COPY project/frontend/ ./
 RUN npm run build
 
 # Stage 2: publish the ASP.NET Core API.
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS backend
 WORKDIR /src
 COPY . .
-RUN dotnet publish src/CrudWorks.Api/CrudWorks.Api.csproj \
+RUN dotnet publish project/src/CrudWorks.Api/CrudWorks.Api.csproj \
         -c Release \
         -o /app/publish \
         /p:UseAppHost=false
