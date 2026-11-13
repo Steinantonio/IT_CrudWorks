@@ -47,7 +47,7 @@ export default function TaskListPage() {
   const headingRef = useRef<HTMLHeadingElement | null>(null)
 
   const tasksQuery = useQuery({
-    queryKey: taskKeys.all,
+    queryKey: taskKeys.list(session?.user.id ?? ''),
     queryFn: () => listTasks(token),
     enabled: token !== '',
   })

@@ -21,7 +21,7 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <AuthProvider>
+        <AuthProvider queryClient={queryClient}>
           <AppRoutes />
         </AuthProvider>
       </BrowserRouter>

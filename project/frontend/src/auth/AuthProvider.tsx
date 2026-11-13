@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
+import type { QueryClient } from '@tanstack/react-query'
 import { apiRequest } from '../lib/api'
 import { setUnauthorizedHandler } from '../lib/tasks'
 import { AuthContext } from './authContext'
@@ -15,9 +16,15 @@ interface LoginResponse {
 
 interface AuthProviderProps {
   children: ReactNode
+  /**
+   * Optional React Query client. When present (production app), the provider
+   * clears the server-state cache on login/logout/unauthorized so a previous
+   * account's tasks never leak into the next user's view. Tests may omit it.
+   */
+  queryClient?: QueryClient
 }
 
-export function AuthProvider({ children }: AuthProviderProps) {
+export function AuthProvider({ children, queryClient }: AuthProviderProps) {
   const [session, setSession] = useState<Session | null>(() => readSession())
 
   const login = useCallback(async (email: string, password: string) => {
@@ -36,9 +43,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
       throw new Error('The server returned an invalid session.')
     }
 
+    // A different account may have been cached under the previous session; wipe
+    // server state so no task from another user leaks into this view.
+    queryClient?.clear()
     writeSession(nextSession)
     setSession(nextSession)
-  }, [])
+  }, [queryClient])
 
   const register = useCallback(
     async (displayName: string, email: string, password: string) => {
@@ -52,13 +62,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const logout = useCallback(() => {
     clearSession()
+    queryClient?.clear()
     setSession(null)
-  }, [])
+  }, [queryClient])
 
   const handleUnauthorized = useCallback(() => {
     clearSession()
+    queryClient?.clear()
     setSession(null)
-  }, [])
+  }, [queryClient])
 
   // Task functions live outside React, so the context hands them the `401`
   // reaction once per provider lifetime.

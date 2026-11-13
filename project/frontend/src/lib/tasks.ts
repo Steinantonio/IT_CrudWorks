@@ -25,7 +25,8 @@ export interface TaskInput {
 
 export const taskKeys = {
   all: ['tasks'] as const,
-  detail: (id: string) => ['tasks', id] as const,
+  list: (userId: string) => ['tasks', 'list', userId] as const,
+  detail: (id: string) => ['tasks', 'detail', id] as const,
 }
 
 type UnauthorizedHandler = () => void
