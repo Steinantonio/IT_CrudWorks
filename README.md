@@ -1,194 +1,157 @@
 # IT CrudWorks
 
-**An agent playbook for the BLA .NET technical interview exercise.**
+A full-stack task manager built as the deliverable for the **BLA .NET technical
+interview exercise**: authenticated users manage **their own** tasks through a
+.NET 10 API (Clean Architecture, TDD) and a responsive React client. Every
+design decision, test, and AI correction is documented so a review panel can
+inspect any behavior and get a defensible answer.
 
-IT CrudWorks is a self-contained workspace for building a full-stack CRUD task manager with .NET 10, SQLite, React, Clean Architecture, TDD, and a documented GenAI workflow. Development follows **Spec-Driven Development (SDD)** and an **AI-Driven Development Life Cycle (AI-DLS)**: specs define behavior, agents own phases, and every claim is backed by a test or a command output. The goal is not just to ship the exercise; it is to make every design decision, test, and AI correction explainable in a code review.
+**Demo credentials:** `demo@crudworks.local` / `Demo123!` — seeded automatically
+in Development (development/demo only; do not reuse elsewhere).
 
-## Status
+## Quick start
 
-| Wave | Scope | Status |
-| --- | --- | --- |
-| 0 | Brief intake and preferences | Complete |
-| 1 | Foundation: contract, brief breakdown, traceability, DoD, stack baseline, templates | Approved |
-| 2 | Core agents: orchestrator, architect, backend implementer | Approved |
-| 3 | Delivery agents: frontend implementer, reviewer, QA engineer | Delivered |
-| 4 | Smoke test + OpenCode sync | Complete — six agents synced and validated |
-| 5 | Build and rehearse the actual exercise | In progress — auth slice, task CRUD, and task UI are implemented, reviewed, and green; the clean-database run and the closing passes are done |
+Prerequisites: [.NET SDK 10.0.404](https://dotnet.microsoft.com) (pinned in
+`global.json`) and Node.js LTS with npm 11+. No database server — SQLite is a
+single file created by migrations.
 
-**Deadline: Friday 2026-11-13.** The plan is compressed for two working days; see `docs/00-brief.md` §7 for the must-have/cut list.
+```powershell
+# 1. Backend (from project/)
+dotnet run --project src/CrudWorks.Api --launch-profile http
+# -> http://localhost:5080 (migrations + demo seed run automatically in Development)
 
-### Where the application stands
-
-| Area | State | Evidence |
-| --- | --- | --- |
-| Backend | Auth + task CRUD implemented, reviewed, tested | 166 backend tests (Domain 37, Application 57, Infrastructure 25, Api 47) |
-| Frontend | Login, register, task list, task form, delete dialog, 401 wiring | 80 frontend tests; keyboard pass and a real-browser walkthrough at 360/768/1280 |
-| Live API | 37/37 end-to-end checks green from a clean database | `docs/qa/logs/e2e-run.log` |
-| Coverage | 100% line coverage on Domain + Application (floor: 80%) | `docs/qa/coverage-summary.md` |
-| Reviews | Three independent reviews (auth slice, task slice, final); every blocker and major resolved | `docs/reviews/` |
-| Open | Git repository, demo rehearsal, and the console check during the rehearsal | `docs/02-definition-of-done.md` → "Open items" |
-
-## The exercise in one paragraph
-
-Build a simple web application with a .NET C# API and data layer, following Clean Architecture and TDD. The app must support CRUD on records, user registration and login, authorized and anonymous endpoints, and a responsive frontend. It must ship with seeded data and credentials, a README, an informal user story, and a written account of how GenAI was used, validated, and corrected. The panel will review the code and ask you to defend your decisions.
-
-## Spec-driven development
-
-Behavior is defined before code:
-
-```
-Brief → Constitution → Spec → Plan → Tasks → Red test → Implementation → Evidence
+# 2. Frontend (from project/frontend/)
+npm install
+npm run dev
+# -> http://localhost:5173 (proxies /api to http://localhost:5080)
 ```
 
-- `specs/constitution.md` — rules no change may violate.
-- `specs/001-auth/` — registration, login, current user.
-- `specs/002-task-crud/` — ownership-scoped CRUD.
-- `specs/003-web-client/` — routes, states, responsiveness, accessibility.
-- `docs/adr/0004-api-contract.md` — the single source of truth for routes and payloads.
-- `docs/07-sdd-and-ai-dls.md` — the full method and how agents map to it.
+Open `http://localhost:5173`, use the **Use demo account** button on the login
+screen (fills the seeded credentials), and manage the five seeded tasks. To
+rebuild the database from scratch, stop the API, delete
+`src/CrudWorks.Api/crudworks.db`, and start the API again.
 
-A change starts in the spec. An implementer works only from an approved spec and
-an ordered task; the reviewer checks the diff against the spec; QA maps tests to
-acceptance criteria. The task lists in `specs/NNN-*/tasks.md` are the working queue.
+## Stack
 
-## Team roster
+| Layer | Choice |
+| --- | --- |
+| Backend | .NET 10 (ASP.NET Core Web API), C# with nullable reference types, EF Core 10 + SQLite |
+| Frontend | React 19, TypeScript, Vite 8, TanStack Query, React Hook Form + Zod |
+| Tests | xUnit + NSubstitute + `WebApplicationFactory` (backend), Vitest + Testing Library (frontend) |
+| Auth | JWT bearer (HMAC-SHA256, 60 min), passwords via `PasswordHasher<User>` (PBKDF2) |
 
-| Agent | Core question | Owns | Mode | Status |
+## Architecture
+
+Clean Architecture with a visible dependency rule, enforced by project
+references (not convention):
+
+```
+CrudWorks.Domain          (no dependencies — entities, invariants)
+        ▲
+CrudWorks.Application     (Domain only — use cases, ports, DTOs, validation)
+        ▲
+CrudWorks.Infrastructure  (Application — EF Core, repositories, JWT, hashing)
+        ▲
+CrudWorks.Api             (composition root — thin controllers, DI, auth wiring)
+```
+
+- **Business rules live in Application** (`AuthService`, `TaskService`,
+  validators) and **invariants live in Domain entities** — never in controllers,
+  `DbContext`, or React components. No EF Core or ASP.NET types in either core
+  project.
+- **Controllers are thin**: bind, delegate, map, return. Ownership always comes
+  from the JWT subject, never the request body.
+- **Repositories are explicit per aggregate** (`ITaskRepository`,
+  `IUserRepository` as Application ports; EF Core implementations in
+  Infrastructure). No generic repositories, no MediatR/CQRS/AutoMapper.
+- **The React client** keeps one API client (`src/lib/api.ts`), one auth module
+  (`src/auth/`), feature-first pages/components, and TanStack Query for server
+  state.
+
+Key decisions and their rationale: `docs/adr/` (architecture, auth strategy,
+persistence, API contract, frontend structure).
+
+## Database
+
+SQLite (`Data Source=crudworks.db`), two tables, created by EF Core migrations:
+
+| Table | Fields | Notes |
+| --- | --- | --- |
+| `Users` | `Id` PK, `Email` (unique, normalized), `DisplayName`, `PasswordHash`, `CreatedAtUtc` | Hash never returned by the API |
+| `Tasks` | `Id` PK, `UserId` FK → Users (indexed), `Title`, `Description?`, `Status`, `DueDate?`, `CreatedAtUtc`, `UpdatedAtUtc` | `Status`: `Todo` / `InProgress` / `Done`, stored as string |
+
+Migrations apply on startup in Development; a seeder then creates the demo
+user and five story-shaped tasks (all three statuses, descriptions and due
+dates) when the tables are empty. PostgreSQL is the documented production swap
+(`docs/adr/0003-persistence-and-test-strategy.md`).
+
+## API surface
+
+Full contract (payloads, error bodies, examples): `docs/adr/0004-api-contract.md`.
+
+| Method | Route | Auth | Success | Errors |
 | --- | --- | --- | --- | --- |
-| Orchestrator | What is the smallest correct next step? | plan, delegation, integration, final delivery | primary | Defined |
-| Architect | What is the right shape, and why? | ADRs, contracts, data model, test strategy | subagent | Defined |
-| Backend implementer | Does the backend behave correctly? | Domain, Application, Infrastructure, API, backend tests | subagent | Defined |
-| Frontend implementer | Is the UI correct, responsive, and clean? | React app, state, forms, frontend tests | subagent | Defined |
-| Reviewer | What would break in review? | review reports, risk findings, release verdict | subagent | Defined |
-| QA engineer | How do we prove it works? | integration/E2E tests, CI, Docker, seed/demo, release checklist | subagent | Defined |
+| GET | `/api/health` | anonymous | 200 | — |
+| POST | `/api/auth/register` | anonymous | 201 + `Location` | 400, 409 |
+| POST | `/api/auth/login` | anonymous | 200 + token | 400, 401 |
+| GET | `/api/auth/me` | bearer | 200 | 401 |
+| GET | `/api/tasks` | bearer | 200 + list | 401 |
+| GET | `/api/tasks/{id}` | bearer | 200 | 401, 404 |
+| POST | `/api/tasks` | bearer | 201 + `Location` | 400, 401 |
+| PUT | `/api/tasks/{id}` | bearer | 200 | 400, 401, 404 |
+| DELETE | `/api/tasks/{id}` | bearer | 204 | 401, 404 |
 
-The roster is deliberately lean. One owner per artifact, no duplicate roles. See `agents/README.md` for the full contract and `docs/05-agent-smoke-tests.md` for the boundary tests.
+Errors use RFC 7807 `application/problem+json`. Another user's task returns
+`404`, never `403` — the API does not confirm the resource exists (IDOR seam).
 
-## Repository map
+## Testing
 
-```
-IT_CrudWorks/
-├── README.md                  # this file
-├── AGENTS.md                  # shared operating contract for every agent
-├── specs/                     # SDD: what the product must do
-│   ├── README.md              # lifecycle, naming, change protocol
-│   ├── constitution.md        # non-negotiable rules
-│   ├── 000-product/spec.md
-│   ├── 001-auth/{spec,plan,tasks}.md
-│   ├── 002-task-crud/{spec,plan,tasks}.md
-│   ├── 003-web-client/{spec,plan,tasks}.md
-│   └── _template/{spec,plan,tasks}.md
-├── docs/
-│   ├── 00-brief.md            # structured brief, requirement IDs, timebox
-│   ├── 01-wave-plan.md        # waves, deliverables, exit criteria
-│   ├── 02-definition-of-done.md
-│   ├── 03-stack-baseline.md   # stack and environment
-│   ├── 04-requirement-traceability.md
-│   ├── 05-agent-smoke-tests.md
-│   ├── 06-session-checkpoint.md
-│   ├── 07-sdd-and-ai-dls.md   # methodology and agent mapping
-│   ├── user-story.md          # informal user story (R-04)
-│   ├── presentation.md        # outline, demo script, Q&A prep
-│   ├── adr/
-│   │   ├── 0001-clean-architecture.md
-│   │   ├── 0002-auth-strategy.md
-│   │   ├── 0003-persistence-and-test-strategy.md
-│   │   ├── 0004-api-contract.md
-│   │   └── 0005-frontend-architecture.md
-│   ├── ai/
-│   │   ├── 000-foundation-and-core-agents.md
-│   │   ├── 001-environment-setup.md
-│   │   ├── 002-scaffold-and-sdd.md
-│   │   ├── 003-auth-slice.md
-│   │   ├── 004-auth-ui-slice.md
-│   │   ├── 005-review-auth-slice.md
-│   │   ├── 006-review-decisions.md
-│   │   ├── 007-task-backend-slice.md
-│   │   ├── 008-task-ui-slice.md
-│   │   ├── 009-contract-clarification.md
-│   │   ├── 010-review-task-slice.md
-│   │   ├── 011-task-review-decisions.md
-│   │   ├── 012-qa-clean-run.md
-│   │   ├── 013-application-coverage-gaps.md
-│   │   ├── 014-api-critical-paths.md
-│   │   ├── 015-frontend-accessibility-pass.md
-│   │   ├── 016-full-gate-one-tree.md
-│   │   ├── 017-final-review-findings-closed.md
-│   │   └── 018-frontend-final-fixes.md
-│   ├── reviews/             # three independent reviews
-│   └── qa/
-│       ├── e2e-api-check.js      # 37 API-level end-to-end checks
-│       ├── e2e-api-check.test.js # self-test of the IDOR leak detector
-│       ├── coverage-summary.md   # per-file coverage against the 80% floor
-│       ├── clean-run-report.md   # the clean-database run, end to end
-│       ├── test-plan.md          # requirement-to-test map
-│       ├── tools/                # api-ctl.js, coverage-report.js, db-state.js, inspect-coverage.js
-│       └── logs/                # captured command output
-├── templates/                 # 9 reusable templates
-├── scripts/
-│   └── sync-agents.ps1        # copies agents to .opencode/agents/it_crudworks
-├── project/                   # the deliverable application
-│   ├── CrudWorks.slnx
-│   ├── src/                   # Domain, Application, Infrastructure, Api
-│   ├── tests/                 # four xUnit projects
-│   └── frontend/              # React + TypeScript + Vite
-└── agents/
-    ├── README.md              # roster, routing, permissions, conventions
-    ├── orchestrator.md        # primary
-    ├── architect.md           # subagent
-    ├── backend-implementer.md # subagent
-    ├── frontend-implementer.md
-    ├── reviewer.md
-    └── qa-engineer.md
-```
+| Suite | Command (from `project/`) | Current state |
+| --- | --- | --- |
+| Backend build | `dotnet build CrudWorks.slnx -warnaserror` | 0 warnings, 0 errors |
+| Backend tests | `dotnet test CrudWorks.slnx` | 166 passing (Domain 37, Application 57, Infrastructure 25, Api 47) |
+| Frontend lint | `npm run lint` (in `frontend/`) | clean (oxlint) |
+| Frontend tests | `npm run test` | 88 passing (11 files) |
+| Frontend build | `npm run build` | production bundle |
+| API end-to-end | `node docs/qa/e2e-api-check.js` (API running) | 37/37 checks from a clean database |
 
-The application is green end to end: the backend builds with warnings as errors
-and 166 tests pass, the frontend passes lint with 80 tests and the production
-build, and 37/37 API-level end-to-end checks pass against a database recreated
-from scratch. Setup and demo steps are in `project/README.md`; the evidence
-lives in `docs/qa/` and `docs/ai/`.
+Coverage: 100% line coverage on `Domain` + `Application` (floor: 80%);
+`docs/qa/coverage-summary.md` has per-file numbers. Backend tests use
+per-factory temporary SQLite files — no test shares mutable state.
 
-## How to use this playbook
+## Security notes
 
-1. Read `AGENTS.md` before delegating anything.
-2. Read `specs/constitution.md` and the relevant approved spec; if the behavior is
-   not in the spec, fix the spec first.
-3. Read `docs/00-brief.md` and `docs/04-requirement-traceability.md` to anchor the scope.
-4. Pick the next task from `specs/NNN-*/tasks.md` and start with
-   `templates/delegation-brief.md`.
-5. Every agent returns `templates/handoff.md` with evidence, assumptions, and the next step.
-6. The orchestrator closes each wave with `templates/wave-summary.md`.
-7. Every AI-assisted change gets an entry in `docs/ai/` using `templates/ai-evidence-log.md`. This is not bureaucracy; it is raw material for the GenAI section of the presentation.
-8. The reviewer uses `templates/code-review.md`; the final presentation uses `templates/presentation-outline.md`.
+- Passwords hashed with `PasswordHasher<User>` (PBKDF2); never stored, returned,
+  or logged in plaintext.
+- Login returns the same `401` for unknown email and wrong password, and
+  verifies in constant time (dummy hash on the unknown-email path).
+- Failed logins are audited with the email **domain only**.
+- No signing key in source: Development uses an ephemeral per-process key with a
+  logged warning; any other environment fails fast without `Jwt:SigningKey`.
+- CORS restricted to the configured frontend origin, explicit methods/headers.
+- The browser keeps the token in `sessionStorage` for the demo; the XSS
+  trade-off and the production cookie alternative are documented in
+  `docs/adr/0002-auth-strategy.md`.
 
-## Start orchestrating
+## How this project was built
 
-The six agents are synced to `.opencode/agents/it_crudworks/` as `it_crudworks/orchestrator`, `it_crudworks/architect`, `it_crudworks/backend-implementer`, `it_crudworks/frontend-implementer`, `it_crudworks/reviewer`, and `it_crudworks/qa-engineer`.
+The workspace applies **Spec-Driven Development** with an AI agent team:
+specs define behavior before code (`specs/`), six specialized agents own phases
+(`AGENTS.md`, `agents/`), every AI-assisted change has an evidence entry with
+prompt, output, validation, corrections and rejected suggestions
+(`docs/ai/`), and requirement coverage is traced end to end
+(`docs/04-requirement-traceability.md`, R-01…R-30).
 
-1. Restart OpenCode, or start a new session, so it reloads the agent directory.
-2. Select **it_crudworks/orchestrator** as the primary agent.
-3. Give it an objective, not an implementation. Example:
-   > "Implement SPEC-001. Start with T-001-01 to T-001-05; use the backend
-   > implementer, then review the slice against the spec."
-4. After editing any agent file, run `powershell -File scripts/sync-agents.ps1`.
+| Want to see | Go to |
+| --- | --- |
+| Requirement coverage (R-01…R-30) | `docs/04-requirement-traceability.md` |
+| User story and demo script | `docs/user-story.md`, `docs/presentation.md` |
+| Architecture decisions | `docs/adr/` |
+| Independent reviews | `docs/reviews/` |
+| QA evidence (clean runs, logs, tools) | `docs/qa/` |
+| GenAI evidence log | `docs/ai/` |
+| The original exercise brief | `InstructionsEx/` + structured summary in `docs/00-brief.md` |
 
-The canonical files are in `agents/`; `.opencode/` holds generated copies. Do not edit the copies.
+## License
 
-## Key decisions
-
-| Decision | Choice | Status | Why |
-| --- | --- | --- | --- |
-| Method | SDD + AI-DLS with agent-owned phases | Accepted | Makes behavior reviewable before code and keeps AI output accountable. |
-| Domain | Task manager: users own tasks | Accepted | It satisfies the CRUD, auth, and GenAI exercise with one coherent story. |
-| Backend | .NET 10, ASP.NET Core Web API, EF Core, SQLite | Accepted | Modern LTS stack, explicit layers, zero-setup database; PostgreSQL is the documented production swap. |
-| Frontend | React + TypeScript + Vite | Accepted | Mainstream, easy to review, strong typing and ecosystem. |
-| Auth | JWT bearer + ASP.NET Core Identity password hasher | Accepted | Simple to demo and explain; production hardening documented in an ADR. |
-| Tests | xUnit, NSubstitute, WebApplicationFactory, SQLite test databases | Accepted | Covers unit, infrastructure, and API layers without Docker or shared state. |
-| Language | English for code, docs, commits, and agent output | Accepted | Matches the American interview panel. |
-| Location | Everything under `IT_CrudWorks/` | Accepted | Self-contained deliverable; synced to OpenCode with `scripts/sync-agents.ps1`. |
-
-Open decisions and environment gaps are tracked in `docs/03-stack-baseline.md`.
-
-## Source brief
-
-The original exercise PDF is `C:\Users\User\Downloads\Net - BLA - Technical Interview Exercise - V6 (1).pdf`. `docs/00-brief.md` is a structured working summary; if the two ever conflict, the PDF wins.
+MIT — see [LICENSE](LICENSE).
