@@ -1,0 +1,145 @@
+using CrudWorks.Api.Authentication;
+using CrudWorks.Api.ErrorHandling;
+using CrudWorks.Api.Security;
+using CrudWorks.Application.Auth;
+using CrudWorks.Application.Common;
+using CrudWorks.Application.Tasks;
+using CrudWorks.Application.Users;
+using CrudWorks.Infrastructure.Persistence;
+using CrudWorks.Infrastructure.Persistence.Seed;
+using CrudWorks.Infrastructure.Security;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using System.Text.Json.Serialization;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// ADR-0004 §1: enums and dates travel as strings ("Todo", "InProgress", "Done").
+// Default naming keeps the exact contract names; camelCase applies to properties.
+builder.Services.AddControllers()
+    .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(
+        new JsonStringEnumConverter()));
+
+builder.Services.AddOpenApi();
+builder.Services.AddProblemDetails();
+builder.Services.AddExceptionHandler<ProblemDetailsExceptionHandler>();
+builder.Services.AddHealthChecks();
+builder.Services.AddHttpContextAccessor();
+
+builder.Services.AddDbContext<CrudWorksDbContext>((serviceProvider, options) =>
+{
+    var configuration = serviceProvider.GetRequiredService<IConfiguration>();
+    var connectionString = configuration.GetConnectionString("Default") ?? "Data Source=crudworks.db";
+    options.UseSqlite(connectionString);
+});
+
+// Registered through a factory so the key is resolved after configuration is final:
+// a warning is logged for the Development fallback and a missing key fails startup
+// outside Development (the settings are resolved eagerly below).
+builder.Services.AddSingleton(serviceProvider =>
+{
+    var configuration = serviceProvider.GetRequiredService<IConfiguration>();
+    var jwtOptions = configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>() ?? new JwtOptions();
+    var environment = serviceProvider.GetRequiredService<IHostEnvironment>();
+
+    var (key, isEphemeral) = JwtSigningKey.Resolve(jwtOptions.SigningKey, environment);
+    if (isEphemeral)
+    {
+        serviceProvider.GetRequiredService<ILoggerFactory>()
+            .CreateLogger("Jwt")
+            .LogWarning(
+                "Jwt:SigningKey is not configured; using an ephemeral Development key. Tokens will not survive a restart.");
+    }
+
+    jwtOptions.SigningKey = key;
+    return jwtOptions;
+});
+
+builder.Services.AddScoped<IUserRepository, UserRepository>();
+builder.Services.AddScoped<ITaskRepository, TaskRepository>();
+builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
+builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<ITaskService, TaskService>();
+builder.Services.AddScoped<ICurrentUser, HttpCurrentUser>();
+builder.Services.AddSingleton<IPasswordHasher, PasswordHasherAdapter>();
+builder.Services.AddSingleton<ITokenService, JwtTokenService>();
+builder.Services.AddSingleton<ILoginAudit, LoginAudit>();
+
+builder.Services.AddJwtBearerAuthentication();
+
+var allowedOrigin = builder.Configuration["Cors:AllowedOrigin"] ?? "http://localhost:5173";
+// ADR-0004 §6: configured origin, explicit methods and headers, no credentials.
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("Frontend", policy =>
+        policy.WithOrigins(allowedOrigin)
+            .WithHeaders("Content-Type", "Authorization")
+            .WithMethods("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+});
+
+var app = builder.Build();
+
+// Fail fast when the signing key is missing outside Development.
+app.Services.GetRequiredService<JwtOptions>();
+
+app.UseExceptionHandler();
+// Routing-level failures (unknown route, wrong method) have no body of their own.
+// ADR-0004 §1 requires every error, including those, to be RFC 7807 problem+json.
+app.UseStatusCodePages(async context =>
+{
+    var response = context.HttpContext.Response;
+    if (response.HasStarted || response.ContentLength is not null || response.ContentType is not null)
+    {
+        return;
+    }
+
+    var problem = ApiProblemDetails.Create(
+        context.HttpContext,
+        response.StatusCode,
+        StatusTitle(response.StatusCode));
+
+    await response.WriteAsJsonAsync(problem, options: null, contentType: ApiProblemDetails.ContentType);
+});
+app.UseCors("Frontend");
+app.UseAuthentication();
+app.UseAuthorization();
+
+if (app.Environment.IsDevelopment())
+{
+    app.MapOpenApi();
+
+    using var scope = app.Services.CreateScope();
+    var dbContext = scope.ServiceProvider.GetRequiredService<CrudWorksDbContext>();
+    var passwordHasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
+    await DatabaseSeeder.InitializeAsync(dbContext, passwordHasher);
+}
+
+app.MapControllers();
+app.MapHealthChecks("/api/health", new HealthCheckOptions
+{
+    ResponseWriter = async (context, report) =>
+    {
+        context.Response.ContentType = "application/json";
+        await context.Response.WriteAsJsonAsync(new
+        {
+            status = report.Status.ToString(),
+            totalDurationMs = report.TotalDuration.TotalMilliseconds
+        });
+    }
+});
+
+app.Run();
+
+// Titles for routing-level failures, which never reach a controller.
+static string StatusTitle(int status) => status switch
+{
+    400 => "Bad request.",
+    401 => "Authentication required.",
+    403 => "Forbidden.",
+    404 => "Resource not found.",
+    405 => "Method not allowed.",
+    _ => "The request could not be completed.",
+};
+
+public partial class Program { }
