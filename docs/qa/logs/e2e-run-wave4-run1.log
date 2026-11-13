@@ -1,0 +1,40 @@
+PASS | A1 demo login returns 200 + token | status=200 token=present expiresAtUtc=2026-11-12T21:58:04.0765207Z
+PASS | A2 demo list returns 5 seeded tasks | status=200 count=5
+PASS | A3 statuses are 2 Todo / 2 InProgress / 1 Done | {"Todo":2,"InProgress":2,"Done":1}
+PASS | A4 list is newest first by createdAtUtc | ["2026-11-12T20:24:29.5034702Z","2026-11-12T19:54:29.5023084Z","2026-11-12T18:54:29.5022529Z","2026-11-12T17:54:29.5017752Z","2026-11-12T16:54:29.475072Z"]
+PASS | B1 create returns 201 + Location /api/tasks/{id} | status=201 location=/api/tasks/cbe1d15b-dfe0-4783-baf0-33b5c82b5f3a
+PASS | B2 create body has server id/timestamps and stored status | id=cbe1d15b-dfe0-4783-baf0-33b5c82b5f3a status=Todo
+PASS | B3 get by id returns 200 | status=200
+PASS | B4 put returns 200 | status=200
+PASS | B5 update persists after a fresh GET | {"title":"QA updated task","status":"InProgress","dueDate":"2026-11-21"}
+PASS | B6 owner/createdAtUtc unchanged and updatedAtUtc >= createdAtUtc | createdAtUtc=2026-11-12T20:58:04.0871041Z updatedAtUtc=2026-11-12T20:58:04.0946717Z
+PASS | B7 put null dueDate/description clears them | status=200 dueDate=null description=null
+PASS | B8 delete returns 204 then get returns 404 | delete=204 getAfterDelete=404
+PASS | C1 register user B returns 201 | status=201 location=/api/auth/me
+PASS | C2 login user B returns 200 + token | status=200
+PASS | C3 user B list is empty (not the demo tasks) | status=200 count=0
+PASS | C4 IDOR read returns 404 and no task data | status=404 leaks=none body={"type":"https://tools.ietf.org/html/rfc9110#section-15.5.5","title":"Task not found.","status":404,"traceId":"00-91787050bfa98840a051bdc704feb5a9-b8e0fcc787128
+PASS | C5 IDOR update returns 404 | status=404
+PASS | C6 IDOR delete returns 404 | status=404
+PASS | C7 demo data intact after IDOR (5 tasks, victim unchanged) | count=5 victim={"title":"Send the weekly status update","status":"Todo"}
+PASS | D1 short title -> 400 errors.title | status=400 errors={"title":["Title must be between 3 and 200 characters."]}
+PASS | D2 status "1" -> 400 errors.status | status=400 errors={"status":["Status must be Todo, InProgress, or Done."]}
+PASS | D3 status "todo" (lowercase) -> 400 errors.status | status=400 errors={"status":["Status must be Todo, InProgress, or Done."]}
+PASS | D4 overlong description -> 400 errors.description | status=400 errors={"description":["Description must be at most 2000 characters."]}
+PASS | D5 overlong title -> 400 errors.title | status=400 errors={"title":["Title must be between 3 and 200 characters."]}
+PASS | D6 invalid dueDate -> 400 errors.dueDate | status=400 errors={"dueDate":["Due date must be a valid date."]}
+PASS | E1 anonymous GET /api/tasks -> 401 | status=401
+PASS | E2 anonymous GET /api/tasks/{id} -> 401 | status=401
+PASS | E3 anonymous POST /api/tasks -> 401 | status=401
+PASS | E4 anonymous PUT /api/tasks/{id} -> 401 | status=401
+PASS | E5 anonymous DELETE /api/tasks/{id} -> 401 | status=401
+PASS | E6 anonymous POST wrote nothing | count=5
+PASS | F1 duplicate email -> 409 | status=409
+PASS | F2 wrong password -> 401 | status=401
+PASS | F3 anonymous /api/auth/me -> 401 | status=401
+PASS | G1 client-supplied userId ignored; task owned by caller | status=201 inDemoList=true inBList=false
+PASS | G2 ownership probe removed; demo list back to the 5 seeded tasks | delete=204 count=5
+PASS | H1 missing task GET/PUT/DELETE -> 404 | get=404 put=404 delete=404
+
+SUMMARY 37/37 checks passed
+CLEANUP | scratch user qa-user-b+1794517084115@crudworks.local deleted; Users=1 Tasks=5 — the database is back at the seeded baseline
