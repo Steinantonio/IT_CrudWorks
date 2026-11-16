@@ -29,8 +29,13 @@ src/
 
 ### State
 
-- **Server state:** TanStack Query. Keys: `['tasks']`, `['tasks', id]`, `['me']`.
-  Mutations invalidate the list and the affected item.
+- **Server state:** TanStack Query. Keys (in `lib/tasks.ts`): the invalidation
+  prefix `['tasks']`, `taskKeys.list(userId)` = `['tasks', 'list', userId]`, and
+  `taskKeys.detail(id)` = `['tasks', 'detail', id]`. The list key carries the
+  user id so a cached list can never be served to a different account, and the
+  `QueryClient` is passed to `AuthProvider`, which clears the whole cache on
+  login, logout, and a `401`.
+- Mutations invalidate by prefix (`taskKeys.all`) and the affected detail.
 - **Auth state:** React context. The token and user summary are persisted in
   `sessionStorage` under `crudworks.session`. Only `auth/session.ts` reads or
   writes storage.
@@ -106,3 +111,9 @@ API client; no test hits a real server. Minimum coverage is listed in SPEC-003.
 - `specs/003-web-client/spec.md`
 - `docs/adr/0002-auth-strategy.md`, `docs/adr/0004-api-contract.md`
 - `project/frontend/`
+
+## Change log
+
+| Date | Change | Why |
+| --- | --- | --- |
+| 2026-11-16 | §State rewritten to match the delivered code: task keys are `['tasks']` (invalidation prefix), `['tasks', 'list', userId]`, `['tasks', 'detail', id]`; the unused `['me']` key was removed; the `QueryClient` is cleared on login, logout, and `401`. The decision itself (TanStack Query owns server state) is unchanged. | The cache-fix commit `0060cb0` changed cache identity without updating this ADR. The defect was user-reported, not caught by the 88 green frontend tests, because the spec had the same hole — so the ADR must describe what is shipped. Evidence: `project/frontend/src/lib/tasks.ts:26-30`, `project/frontend/src/pages/TaskListPage.tsx:50`, `project/frontend/src/auth/AuthProvider.tsx` (`queryClient?.clear()`), `project/frontend/src/App.tsx` (passes the client). |
