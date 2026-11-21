@@ -58,7 +58,8 @@ Four items are intentionally unchecked. Each names the owner and what closes it.
 - [x] Validation errors use `ProblemDetails` with field-level details.
 - [x] `CancellationToken` is passed through async calls.
 - [x] OpenAPI JSON is generated and exposed in Development (no UI package; polish is out of scope).
-- [x] Health check endpoint returns healthy with the database available.
+- [x] Health endpoint returns `Healthy` during the demo; the current endpoint has
+      no registered database-readiness probe (`Program.cs:27,147-159`).
 - [x] No `async void`, `.Result`, `.Wait()`, or fire-and-forget tasks.
 - [x] Build passes with warnings as errors.
 

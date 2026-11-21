@@ -109,3 +109,5 @@ Keep a spec under ~150 lines. If it needs more, split it.
 | SPEC-001 | Authentication and user identity | Implemented | R-06, R-10 |
 | SPEC-002 | Task CRUD and ownership | Implemented | R-05, R-07…R-09, R-11, R-12 |
 | SPEC-003 | Web client experience | Implemented | R-14…R-17 |
+| SPEC-004 | Architecture boundary tests | Implemented | R-02, R-25, R-26 |
+| SPEC-005 | OpenAPI-generated frontend types | Implemented | R-09, R-14, R-17, R-27 |
