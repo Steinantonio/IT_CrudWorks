@@ -1,5 +1,6 @@
 using CrudWorks.Api.Authentication;
 using CrudWorks.Api.ErrorHandling;
+using CrudWorks.Api.OpenApi;
 using CrudWorks.Api.Security;
 using CrudWorks.Application.Auth;
 using CrudWorks.Application.Common;
@@ -21,7 +22,11 @@ builder.Services.AddControllers()
     .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(
         new JsonStringEnumConverter()));
 
-builder.Services.AddOpenApi();
+builder.Services.AddOpenApi(options =>
+{
+    options.AddDocumentTransformer<ContractOpenApiDocumentTransformer>();
+    options.AddOperationTransformer<ContractOpenApiOperationTransformer>();
+});
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<ProblemDetailsExceptionHandler>();
 builder.Services.AddHealthChecks();
