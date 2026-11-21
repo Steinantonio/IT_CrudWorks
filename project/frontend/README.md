@@ -1,3 +1,34 @@
+# CrudWorks frontend
+
+## Generated API types
+
+`src/api/generated/openapi.d.ts` is generated from the API's Development OpenAPI
+document. It is versioned with the repository and must be committed together
+with the API change; commit approval follows the project workflow. Never edit it
+by hand.
+
+The generator is isolated under `tools/openapi-typescript/` with its own lockfile
+and TypeScript 5.x, because `openapi-typescript` 7.13.0 requires the TypeScript 5
+compiler API while this app uses TypeScript 7.
+
+Regenerate after an API contract/metadata change:
+
+```powershell
+# once, or after the tool lockfile changes
+npm --prefix tools/openapi-typescript ci
+
+# start the API in Development (from project/)
+dotnet run --project src/CrudWorks.Api --launch-profile http
+
+# from this folder, with the API on http://localhost:5080
+npm run generate:api-types
+```
+
+Review and commit the regenerated declaration together with the API change. The
+runtime client remains `src/lib/api.ts` (`fetch`); no API client is generated.
+
+---
+
 # React + TypeScript + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.

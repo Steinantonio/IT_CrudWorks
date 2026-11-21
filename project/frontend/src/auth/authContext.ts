@@ -1,12 +1,8 @@
 import { createContext, useContext } from 'react'
 import type { Session, SessionUser } from './session'
+import type { components } from '../api/generated/openapi'
 
-export interface RegisteredUser {
-  id: string
-  email: string
-  displayName: string
-  createdAtUtc: string
-}
+export type RegisteredUser = components['schemas']['AuthUserResponse']
 
 export interface AuthContextValue {
   session: Session | null

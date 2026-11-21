@@ -1,10 +1,8 @@
+import type { components } from '../api/generated/openapi'
+
 export const SESSION_STORAGE_KEY = 'crudworks.session'
 
-export interface SessionUser {
-  id: string
-  email: string
-  displayName: string
-}
+export type SessionUser = components['schemas']['UserSummary']
 
 export interface Session {
   accessToken: string

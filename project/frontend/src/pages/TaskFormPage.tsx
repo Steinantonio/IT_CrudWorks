@@ -8,7 +8,7 @@ import { STATUS_LABELS } from '../components/statusLabels'
 import { useAuth } from '../auth/authContext'
 import { ApiError } from '../lib/api'
 import { TASK_STATUS_VALUES, createTask, getTask, taskKeys, updateTask } from '../lib/tasks'
-import type { TaskInput } from '../lib/tasks'
+import type { TaskUpdateInput } from '../lib/tasks'
 import { z } from 'zod'
 
 const TITLE_MESSAGE = 'Title must be between 3 and 200 characters.'
@@ -41,7 +41,7 @@ function isTaskFieldName(value: string): value is TaskFieldName {
   return serverFieldNames.some((field) => field === value)
 }
 
-function toInput(values: TaskFormValues): TaskInput {
+function toInput(values: TaskFormValues): TaskUpdateInput {
   return {
     title: values.title,
     description: values.description === '' ? null : values.description,
@@ -90,7 +90,7 @@ export default function TaskFormPage() {
   }, [taskQuery.data, reset])
 
   const saveMutation = useMutation({
-    mutationFn: (input: TaskInput) =>
+    mutationFn: (input: TaskUpdateInput) =>
       isEdit && id ? updateTask(token, id, input) : createTask(token, input),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: taskKeys.all })

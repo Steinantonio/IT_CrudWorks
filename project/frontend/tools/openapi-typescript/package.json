@@ -1,0 +1,10 @@
+{
+  "name": "crudworks-openapi-types",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Isolated generator toolchain. openapi-typescript 7.13.0 requires the TypeScript 5.x compiler API; the app itself uses TypeScript 7, so the generator keeps its own locked compiler.",
+  "devDependencies": {
+    "openapi-typescript": "7.13.0",
+    "typescript": "5.9.3"
+  }
+}

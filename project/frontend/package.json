@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "generate:api-types": "node tools/openapi-typescript/node_modules/openapi-typescript/bin/cli.js http://localhost:5080/openapi/v1.json -o src/api/generated/openapi.d.ts",
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest run",

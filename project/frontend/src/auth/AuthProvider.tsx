@@ -6,13 +6,12 @@ import { setUnauthorizedHandler } from '../lib/tasks'
 import { AuthContext } from './authContext'
 import type { AuthContextValue, RegisteredUser } from './authContext'
 import { clearSession, isSession, readSession, writeSession } from './session'
-import type { Session, SessionUser } from './session'
+import type { Session } from './session'
+import type { components } from '../api/generated/openapi'
 
-interface LoginResponse {
-  accessToken: string
-  expiresAtUtc: string
-  user: SessionUser
-}
+type LoginResponse = components['schemas']['LoginResponse']
+type LoginRequest = components['schemas']['LoginRequest']
+type RegisterRequest = components['schemas']['RegisterRequest']
 
 interface AuthProviderProps {
   children: ReactNode
@@ -28,9 +27,10 @@ export function AuthProvider({ children, queryClient }: AuthProviderProps) {
   const [session, setSession] = useState<Session | null>(() => readSession())
 
   const login = useCallback(async (email: string, password: string) => {
+    const loginRequest: LoginRequest = { email, password }
     const response = await apiRequest<LoginResponse>('/api/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify(loginRequest),
     })
 
     const nextSession: Session = {
@@ -52,9 +52,10 @@ export function AuthProvider({ children, queryClient }: AuthProviderProps) {
 
   const register = useCallback(
     async (displayName: string, email: string, password: string) => {
+      const registerRequest: RegisterRequest = { displayName, email, password }
       return apiRequest<RegisteredUser>('/api/auth/register', {
         method: 'POST',
-        body: JSON.stringify({ displayName, email, password }),
+        body: JSON.stringify(registerRequest),
       })
     },
     [],
@@ -93,4 +94,5 @@ export function AuthProvider({ children, queryClient }: AuthProviderProps) {
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+
 }
