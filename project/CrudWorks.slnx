@@ -8,6 +8,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/CrudWorks.Api.Tests/CrudWorks.Api.Tests.csproj" />
     <Project Path="tests/CrudWorks.Application.Tests/CrudWorks.Application.Tests.csproj" />
+    <Project Path="tests/CrudWorks.Architecture.Tests/CrudWorks.Architecture.Tests.csproj" />
     <Project Path="tests/CrudWorks.Domain.Tests/CrudWorks.Domain.Tests.csproj" />
     <Project Path="tests/CrudWorks.Infrastructure.Tests/CrudWorks.Infrastructure.Tests.csproj" />
   </Folder>
