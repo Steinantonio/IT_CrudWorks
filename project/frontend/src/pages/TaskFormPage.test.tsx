@@ -5,7 +5,7 @@ import { SESSION_STORAGE_KEY } from '../auth/session'
 import type { Session } from '../auth/session'
 import type { Task } from '../lib/tasks'
 import { installFetchMock, jsonResponse } from '../test/http'
-import { renderApp } from '../test/renderApp'
+import { renderApp, waitForPage } from '../test/renderApp'
 
 const session: Session = {
   accessToken: 'token-abc',
@@ -56,6 +56,7 @@ describe('TaskFormPage (create)', () => {
     const user = userEvent.setup()
 
     renderApp({ entries: ['/tasks/new'] })
+    await waitForPage()
 
     await user.click(screen.getByRole('button', { name: 'Create task' }))
 
@@ -73,6 +74,7 @@ describe('TaskFormPage (create)', () => {
     const user = userEvent.setup()
 
     renderApp({ entries: ['/tasks/new'] })
+    await waitForPage()
     await user.click(screen.getByRole('button', { name: 'Create task' }))
 
     const titleInput = screen.getByLabelText('Title')
@@ -98,6 +100,7 @@ describe('TaskFormPage (create)', () => {
     const user = userEvent.setup()
 
     renderApp({ entries: ['/tasks/new'] })
+    await waitForPage()
 
     await user.type(screen.getByLabelText('Title'), 'Write the proposal')
     await user.type(screen.getByLabelText('Description'), 'Draft and review the proposal.')
@@ -137,6 +140,7 @@ describe('TaskFormPage (create)', () => {
     const user = userEvent.setup()
 
     renderApp({ entries: ['/tasks/new'] })
+    await waitForPage()
 
     await user.type(screen.getByLabelText('Title'), 'Water the plants')
     await user.click(screen.getByRole('button', { name: 'Create task' }))
@@ -165,6 +169,7 @@ describe('TaskFormPage (create)', () => {
     const user = userEvent.setup()
 
     renderApp({ entries: ['/tasks/new'] })
+    await waitForPage()
     await user.click(screen.getByRole('link', { name: 'Cancel' }))
 
     expect(await screen.findByRole('heading', { name: 'Tasks' })).toBeInTheDocument()
@@ -180,6 +185,7 @@ describe('TaskFormPage (create)', () => {
     const user = userEvent.setup()
 
     renderApp({ entries: ['/tasks/new'] })
+    await waitForPage()
 
     screen.getByLabelText('Title').focus()
 
@@ -207,6 +213,7 @@ describe('TaskFormPage (create)', () => {
     const user = userEvent.setup()
 
     renderApp({ entries: ['/tasks/new'] })
+    await waitForPage()
     await user.click(screen.getByRole('button', { name: 'Create task' }))
 
     expect(
@@ -236,6 +243,7 @@ describe('TaskFormPage (create)', () => {
     const user = userEvent.setup()
 
     renderApp({ entries: ['/tasks/new'] })
+    await waitForPage()
     await user.type(screen.getByLabelText('Title'), 'Write the proposal{Enter}')
 
     expect(await screen.findByRole('heading', { name: 'Tasks' })).toBeInTheDocument()
@@ -257,6 +265,7 @@ describe('TaskFormPage (create)', () => {
     const user = userEvent.setup()
 
     renderApp({ entries: ['/tasks/new'] })
+    await waitForPage()
     screen.getByRole('link', { name: 'Cancel' }).focus()
     await user.keyboard('{Enter}')
 

@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { SESSION_STORAGE_KEY } from '../auth/session'
 import { installFetchMock, jsonResponse } from '../test/http'
-import { renderApp } from '../test/renderApp'
+import { renderApp, waitForPage } from '../test/renderApp'
 
 async function fillValidForm(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText('Display name'), 'Demo User')
@@ -23,6 +23,7 @@ describe('RegisterPage', () => {
     const user = userEvent.setup()
 
     renderApp({ entries: ['/register'] })
+    await waitForPage()
     await fillValidForm(user)
     await user.click(screen.getByRole('button', { name: 'Create account' }))
 
@@ -52,6 +53,7 @@ describe('RegisterPage', () => {
     const user = userEvent.setup()
 
     renderApp({ entries: ['/register'] })
+    await waitForPage()
     await fillValidForm(user)
     await user.click(screen.getByRole('button', { name: 'Create account' }))
 
@@ -79,6 +81,7 @@ describe('RegisterPage', () => {
     const user = userEvent.setup()
 
     renderApp({ entries: ['/register'] })
+    await waitForPage()
     await fillValidForm(user)
     await user.click(screen.getByRole('button', { name: 'Create account' }))
 
@@ -96,6 +99,7 @@ describe('RegisterPage', () => {
     const user = userEvent.setup()
 
     renderApp({ entries: ['/register'] })
+    await waitForPage()
     await user.click(screen.getByRole('button', { name: 'Create account' }))
 
     expect(
@@ -119,6 +123,7 @@ describe('RegisterPage', () => {
     const user = userEvent.setup()
 
     renderApp({ entries: ['/register'] })
+    await waitForPage()
 
     screen.getByLabelText('Display name').focus()
 
@@ -154,6 +159,7 @@ describe('RegisterPage', () => {
     const user = userEvent.setup()
 
     renderApp({ entries: ['/register'] })
+    await waitForPage()
     await user.type(screen.getByLabelText('Display name'), 'Demo User')
     await user.type(screen.getByLabelText('Email'), 'demo@crudworks.local')
     await user.type(screen.getByLabelText('Password'), 'Secret123{Enter}')
@@ -187,6 +193,7 @@ describe('RegisterPage', () => {
     const user = userEvent.setup()
 
     renderApp({ entries: ['/register'] })
+    await waitForPage()
     await user.type(screen.getByLabelText('Display name'), 'Demo User')
     await user.type(screen.getByLabelText('Email'), 'demo@crudworks.local')
     await user.type(screen.getByLabelText('Password'), 'senhaé12')

@@ -1,11 +1,13 @@
+import { lazy } from 'react'
 import { Route, Routes } from 'react-router-dom'
 import RequireAuth from './auth/RequireAuth'
 import Layout from './components/Layout'
-import LoginPage from './pages/LoginPage'
-import NotFoundPage from './pages/NotFoundPage'
-import RegisterPage from './pages/RegisterPage'
-import TaskFormPage from './pages/TaskFormPage'
-import TaskListPage from './pages/TaskListPage'
+
+const LoginPage = lazy(() => import('./pages/LoginPage'))
+const NotFoundPage = lazy(() => import('./pages/NotFoundPage'))
+const RegisterPage = lazy(() => import('./pages/RegisterPage'))
+const TaskFormPage = lazy(() => import('./pages/TaskFormPage'))
+const TaskListPage = lazy(() => import('./pages/TaskListPage'))
 
 export default function AppRoutes() {
   return (

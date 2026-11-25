@@ -1,10 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import type { RenderResult } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import type { InitialEntry } from 'react-router-dom'
 import AppRoutes from '../AppRoutes'
 import { AuthProvider } from '../auth/AuthProvider'
+import AppErrorBoundary from '../components/AppErrorBoundary'
 
 interface RenderAppOptions {
   entries?: InitialEntry[]
@@ -25,9 +26,16 @@ export function renderApp({ entries = ['/'], queryClient }: RenderAppOptions = {
     <QueryClientProvider client={queryClient ?? createTestQueryClient()}>
       <MemoryRouter initialEntries={entries}>
         <AuthProvider>
-          <AppRoutes />
+          <AppErrorBoundary>
+            <AppRoutes />
+          </AppErrorBoundary>
         </AuthProvider>
       </MemoryRouter>
     </QueryClientProvider>,
   )
+}
+
+/** Waits for the lazy route chunk to render a page with a heading. */
+export async function waitForPage(): Promise<void> {
+  await screen.findByRole('heading')
 }

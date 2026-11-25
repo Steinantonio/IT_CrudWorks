@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react'
+import { Suspense, useEffect, useRef } from 'react'
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/authContext'
+import RouteLoading from './RouteLoading'
 
 export default function Layout() {
   const { isAuthenticated, user, logout } = useAuth()
@@ -48,7 +49,9 @@ export default function Layout() {
         </div>
       </header>
 
-      <Outlet />
+      <Suspense fallback={<RouteLoading />}>
+        <Outlet />
+      </Suspense>
     </>
   )
 }

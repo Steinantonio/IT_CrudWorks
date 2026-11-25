@@ -19,10 +19,10 @@ const session: Session = {
 }
 
 describe('AppRoutes', () => {
-  it('renders the not found page for unknown routes', () => {
+  it('renders the not found page for unknown routes', async () => {
     renderApp({ entries: ['/missing'] })
 
-    expect(screen.getByRole('heading', { name: 'Page not found' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeInTheDocument()
   })
 
   it('shows the signed-in user and logs out back to login', async () => {

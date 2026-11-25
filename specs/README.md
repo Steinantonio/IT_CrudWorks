@@ -111,3 +111,4 @@ Keep a spec under ~150 lines. If it needs more, split it.
 | SPEC-003 | Web client experience | Implemented | R-14…R-17 |
 | SPEC-004 | Architecture boundary tests | Implemented | R-02, R-25, R-26 |
 | SPEC-005 | OpenAPI-generated frontend types | Implemented | R-09, R-14, R-17, R-27 |
+| SPEC-006 | Frontend resilience (lazy routes and error boundary) | Implemented | R-14, R-15, R-17 |
