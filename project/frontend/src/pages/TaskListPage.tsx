@@ -1,5 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useCallback, useRef, useState } from 'react'
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import ConfirmDialog from '../components/ConfirmDialog'
 import ErrorState from '../components/ErrorState'
@@ -9,7 +9,7 @@ import TaskIdChip from '../components/TaskIdChip'
 import { IconCalendar, IconTask } from '../components/icons'
 import { useAuth } from '../auth/authContext'
 import { formatDueDate } from '../lib/dates'
-import { listTasks, removeTask, taskKeys } from '../lib/tasks'
+import { CursorExpiredError, listTasksPage, removeTask, taskKeys } from '../lib/tasks'
 import type { Task, TaskStatus } from '../lib/tasks'
 
 const CONNECTION_ERROR = 'Could not reach the server. Check your connection and try again.'
@@ -44,13 +44,32 @@ export default function TaskListPage() {
   const [actionError, setActionError] = useState<string | null>(null)
   const [savingDescriptionId, setSavingDescriptionId] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<TaskStatus | null>(null)
+  const [generation, setGeneration] = useState(0)
   const headingRef = useRef<HTMLHeadingElement | null>(null)
+  const resetCursorRef = useRef<string | null>(null)
 
-  const tasksQuery = useQuery({
-    queryKey: taskKeys.list(session?.user.id ?? ''),
-    queryFn: () => listTasks(token),
+  const tasksQuery = useInfiniteQuery({
+    queryKey: taskKeys.list(session?.user.id ?? '', generation),
+    queryFn: ({ pageParam }) => listTasksPage(token, { cursor: pageParam }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     enabled: token !== '',
   })
+
+  useEffect(() => {
+    if (!(tasksQuery.error instanceof CursorExpiredError)) {
+      return
+    }
+
+    if (resetCursorRef.current === tasksQuery.error.cursor) {
+      return
+    }
+
+    resetCursorRef.current = tasksQuery.error.cursor
+    setGeneration((current) => current + 1)
+  }, [tasksQuery.error])
+
+  const tasks = tasksQuery.data?.pages.flatMap((page) => page.items) ?? []
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => removeTask(token, id),
@@ -67,8 +86,7 @@ export default function TaskListPage() {
     },
   })
 
-  const tasks = tasksQuery.data ?? []
-  // Counts are always computed from the full list, never the filtered one.
+  // Counts are always computed from the loaded pages, never the filtered view.
   const counts = countByStatus(tasks)
   const visibleTasks =
     statusFilter === null ? tasks : tasks.filter((task) => task.status === statusFilter)
@@ -116,12 +134,26 @@ export default function TaskListPage() {
         </p>
       )}
 
-      {tasksQuery.isError && (
+      {tasksQuery.isError && tasks.length === 0 && (
         <ErrorState
           message={describeError(tasksQuery.error, LIST_ERROR)}
           onRetry={() => {
             setActionError(null)
             tasksQuery.refetch()
+          }}
+        />
+      )}
+
+      {tasksQuery.isError && tasks.length > 0 && (
+        <ErrorState
+          message={describeError(tasksQuery.error, LIST_ERROR)}
+          onRetry={() => {
+            setActionError(null)
+            if (tasksQuery.isFetchNextPageError) {
+              tasksQuery.fetchNextPage()
+            } else {
+              tasksQuery.refetch()
+            }
           }}
         />
       )}
@@ -139,7 +171,7 @@ export default function TaskListPage() {
         </div>
       )}
 
-      {tasksQuery.isSuccess && tasks.length > 0 && (
+      {tasks.length > 0 && (
         <>
           <div className="task-stats" role="group" aria-label="Task summary">
             {STATUS_CARDS.map((card) => (
@@ -156,6 +188,12 @@ export default function TaskListPage() {
               </button>
             ))}
           </div>
+
+          {tasksQuery.hasNextPage && (
+            <p className="task-filter-note" role="status">
+              Counts and filters include loaded tasks.
+            </p>
+          )}
 
           {visibleTasks.length === 0 ? (
             <p className="task-filter-note" role="status">
@@ -218,6 +256,28 @@ export default function TaskListPage() {
                 )
               })}
             </ul>
+          )}
+
+          {tasksQuery.hasNextPage && (
+            <div className="task-pagination">
+              <button
+                type="button"
+                className="button"
+                onClick={() => tasksQuery.fetchNextPage()}
+                disabled={tasksQuery.isFetchingNextPage}
+              >
+                {tasksQuery.isFetchingNextPage ? 'Loading more…' : 'Load more'}
+              </button>
+              <p role="status" aria-live="polite" className="loading-note">
+                {tasksQuery.isFetchingNextPage ? 'Loading more tasks…' : ''}
+              </p>
+            </div>
+          )}
+
+          {!tasksQuery.hasNextPage && (
+            <p className="task-filter-note" role="status">
+              You have reached the end of the list.
+            </p>
           )}
         </>
       )}

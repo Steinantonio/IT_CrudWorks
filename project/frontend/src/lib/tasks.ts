@@ -8,6 +8,9 @@ export const TASK_STATUS_VALUES = ['Todo', 'InProgress', 'Done'] as const satisf
 
 export type Task = components['schemas']['TaskResponse']
 
+/** One page of tasks as defined by ADR-0006 (`GET /api/tasks`). */
+export type TaskPage = components['schemas']['TaskPageResponse']
+
 /** Create payload as defined by ADR-0004 (`POST /api/tasks`). */
 export type TaskCreateInput = components['schemas']['CreateTaskRequest']
 
@@ -16,7 +19,8 @@ export type TaskUpdateInput = components['schemas']['UpdateTaskRequest']
 
 export const taskKeys = {
   all: ['tasks'] as const,
-  list: (userId: string) => ['tasks', 'list', userId] as const,
+  list: (userId: string, generation = 0) =>
+    ['tasks', 'list', userId, generation] as const,
   detail: (id: string) => ['tasks', 'detail', id] as const,
 }
 
@@ -57,8 +61,49 @@ async function taskRequest<T>(
   }
 }
 
-export function listTasks(token: string): Promise<Task[]> {
-  return taskRequest<Task[]>('/api/tasks', token)
+export interface TaskPageOptions {
+  cursor?: string
+  take?: number
+}
+
+/**
+ * The server rejected a cursor the client sent. The list discards the loaded
+ * pages and refetches from the first page; the cursor is never retried as-is.
+ */
+export class CursorExpiredError extends Error {
+  readonly cursor: string
+
+  constructor(cursor: string) {
+    super('The task cursor is no longer valid.')
+    this.name = 'CursorExpiredError'
+    this.cursor = cursor
+  }
+}
+
+export async function listTasksPage(
+  token: string,
+  options: TaskPageOptions = {},
+): Promise<TaskPage> {
+  const params = new URLSearchParams()
+  if (options.take !== undefined) {
+    params.set('take', String(options.take))
+  }
+  if (options.cursor !== undefined) {
+    params.set('cursor', options.cursor)
+  }
+
+  const query = params.toString()
+  const path = `/api/tasks${query ? `?${query}` : ''}`
+
+  try {
+    return await taskRequest<TaskPage>(path, token)
+  } catch (error) {
+    if (options.cursor !== undefined && error instanceof ApiError && error.status === 400) {
+      throw new CursorExpiredError(options.cursor)
+    }
+
+    throw error
+  }
 }
 
 export function getTask(token: string, id: string): Promise<Task> {

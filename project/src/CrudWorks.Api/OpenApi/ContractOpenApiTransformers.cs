@@ -1,5 +1,7 @@
+using System.Globalization;
 using System.Net;
 using System.Text.Json.Nodes;
+using CrudWorks.Application.Tasks;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.OpenApi;
 
@@ -242,6 +244,11 @@ internal sealed class ContractOpenApiOperationTransformer : IOpenApiOperationTra
 
         operation.Responses ??= new OpenApiResponses();
 
+        if (path == "/api/tasks")
+        {
+            NormalizeTaskPaginationParameters(operation);
+        }
+
         foreach (var errorStatus in new[] { "400", "401", "404", "409" })
         {
             if (operation.Responses.TryGetValue(errorStatus, out var error)
@@ -284,6 +291,32 @@ internal sealed class ContractOpenApiOperationTransformer : IOpenApiOperationTra
     private static bool IsProtected(string path) =>
         path == "/api/auth/me"
         || path.StartsWith("/api/tasks", StringComparison.Ordinal);
+
+    private static void NormalizeTaskPaginationParameters(OpenApiOperation operation)
+    {
+        if (operation.Parameters is null)
+        {
+            return;
+        }
+
+        foreach (var parameter in operation.Parameters)
+        {
+            if (parameter is OpenApiParameter { Name: "take", In: ParameterLocation.Query } take)
+            {
+                // The framework describes a query int as "integer or string" with a
+                // pattern; the contract is an integer with a default, so generated
+                // clients get a number instead of a union.
+                take.Schema = new OpenApiSchema
+                {
+                    Type = JsonSchemaType.Integer,
+                    Format = "int32",
+                    Minimum = "1",
+                    Maximum = TaskService.MaxPageSize.ToString(CultureInfo.InvariantCulture),
+                    Default = JsonValue.Create(TaskService.DefaultPageSize),
+                };
+            }
+        }
+    }
 
     private static OpenApiSchema CreateProblemDetailsSchema() => new()
     {

@@ -36,6 +36,11 @@ function errors(body) {
     : null;
 }
 
+// ADR-0006: GET /api/tasks returns { items, nextCursor }, not a bare array.
+function pageItems(body) {
+  return body && typeof body === 'object' && Array.isArray(body.items) ? body.items : [];
+}
+
 // ---------------------------------------------------------------------------
 // Task-resource leak detection
 // ---------------------------------------------------------------------------
@@ -113,10 +118,10 @@ function findLeakedTaskData(body, rawText, victim) {
 //   * only the row created by THIS run is touched (Id AND Email must match);
 //   * tasks owned by that user are removed first, so the FK never breaks;
 //   * the seeded demo user and the seeded tasks are never touched;
-//   * the cleanup is reported on its own line and is NOT one of the 37
-//     checks, so the recorded "37/37" stays valid;
+//   * the cleanup is reported on its own line and is NOT one of the 40
+//     checks, so the recorded "40/40" stays valid;
 //   * if the cleanup cannot be performed, the run reports it and exits 3 —
-//     a green 37/37 must never hide a database that was left dirty.
+//     a green 40/40 must never hide a database that was left dirty.
 //
 // Override the database file with CRUDWORKS_DB; set QA_SKIP_CLEANUP=1 to skip
 // the cleanup (for a non-SQLite provider, where this cleanup does not apply).
@@ -198,7 +203,7 @@ async function main() {
   );
 
   const seeded = await call('GET', '/api/tasks', { token: demoToken });
-  const tasks = Array.isArray(seeded.body) ? seeded.body : [];
+  const tasks = pageItems(seeded.body);
   record(
     'A2 demo list returns 5 seeded tasks',
     seeded.status === 200 && tasks.length === 5,
@@ -216,6 +221,48 @@ async function main() {
     'A4 list is newest first by createdAtUtc',
     JSON.stringify(times) === JSON.stringify([...times].sort().reverse()),
     JSON.stringify(times),
+  );
+
+  const page1 = await call('GET', '/api/tasks?take=2', { token: demoToken });
+  const page1Items = pageItems(page1.body);
+  const page1Cursor = page1.body && page1.body.nextCursor;
+  record(
+    'A5 take=2 returns 2 tasks + nextCursor',
+    page1.status === 200 && page1Items.length === 2 &&
+      typeof page1Cursor === 'string' && page1Cursor.length > 0,
+    'status=' + page1.status + ' count=' + page1Items.length +
+      ' cursor=' + (page1Cursor ? 'present' : 'missing'),
+  );
+
+  const page2 = await call(
+    'GET',
+    '/api/tasks?take=2&cursor=' + encodeURIComponent(page1Cursor || ''),
+    { token: demoToken },
+  );
+  const page2Items = pageItems(page2.body);
+  const page2Cursor = page2.body && page2.body.nextCursor;
+  const page1Ids = page1Items.map((t) => t.id);
+  const duplicateIds = page2Items.filter((t) => page1Ids.includes(t.id));
+  record(
+    'A6 cursor page returns the next 2 tasks without duplicates',
+    page2.status === 200 && page2Items.length === 2 &&
+      typeof page2Cursor === 'string' && duplicateIds.length === 0,
+    'status=' + page2.status + ' count=' + page2Items.length +
+      ' duplicates=' + duplicateIds.length,
+  );
+
+  const page3 = await call(
+    'GET',
+    '/api/tasks?take=2&cursor=' + encodeURIComponent(page2Cursor || ''),
+    { token: demoToken },
+  );
+  const page3Items = pageItems(page3.body);
+  record(
+    'A7 final page returns 1 task and null nextCursor',
+    page3.status === 200 && page3Items.length === 1 &&
+      page3.body && page3.body.nextCursor === null,
+    'status=' + page3.status + ' count=' + page3Items.length +
+      ' nextCursor=' + JSON.stringify(page3.body && page3.body.nextCursor),
   );
 
   // ---------- B. CRUD lifecycle on the demo user ----------
@@ -304,10 +351,11 @@ async function main() {
   );
 
   const listB = await call('GET', '/api/tasks', { token: tokenB });
+  const listBItems = pageItems(listB.body);
   record(
     'C3 user B list is empty (not the demo tasks)',
-    listB.status === 200 && Array.isArray(listB.body) && listB.body.length === 0,
-    'status=' + listB.status + ' count=' + (Array.isArray(listB.body) ? listB.body.length : 'n/a'),
+    listB.status === 200 && listBItems.length === 0,
+    'status=' + listB.status + ' count=' + listBItems.length,
   );
 
   const victim = tasks[0];
@@ -329,13 +377,14 @@ async function main() {
   record('C6 IDOR delete returns 404', idorDel.status === 404, 'status=' + idorDel.status);
 
   const demoAfter = await call('GET', '/api/tasks', { token: demoToken });
-  const victimIntact =
-    Array.isArray(demoAfter.body) &&
-    demoAfter.body.some((t) => t.id === victim.id && t.title === victim.title && t.status === victim.status);
+  const demoAfterItems = pageItems(demoAfter.body);
+  const victimIntact = demoAfterItems.some(
+    (t) => t.id === victim.id && t.title === victim.title && t.status === victim.status,
+  );
   record(
     'C7 demo data intact after IDOR (5 tasks, victim unchanged)',
-    demoAfter.status === 200 && demoAfter.body.length === 5 && victimIntact,
-    'count=' + (demoAfter.body && demoAfter.body.length) + ' victim=' + JSON.stringify({ title: victim.title, status: victim.status }),
+    demoAfter.status === 200 && demoAfterItems.length === 5 && victimIntact,
+    'count=' + demoAfterItems.length + ' victim=' + JSON.stringify({ title: victim.title, status: victim.status }),
   );
 
   // ---------- D. Validation ----------
@@ -397,10 +446,11 @@ async function main() {
   record('E4 anonymous PUT /api/tasks/{id} -> 401', anonPut.status === 401, 'status=' + anonPut.status);
   record('E5 anonymous DELETE /api/tasks/{id} -> 401', anonDel.status === 401, 'status=' + anonDel.status);
   const demoListAfterAnon = await call('GET', '/api/tasks', { token: demoToken });
+  const demoListAfterAnonItems = pageItems(demoListAfterAnon.body);
   record(
     'E6 anonymous POST wrote nothing',
-    demoListAfterAnon.status === 200 && demoListAfterAnon.body.length === 5,
-    'count=' + (demoListAfterAnon.body && demoListAfterAnon.body.length),
+    demoListAfterAnon.status === 200 && demoListAfterAnonItems.length === 5,
+    'count=' + demoListAfterAnonItems.length,
   );
 
   // ---------- F. Auth edge cases ----------
@@ -423,8 +473,10 @@ async function main() {
   });
   const demoList2 = await call('GET', '/api/tasks', { token: demoToken });
   const bList2 = await call('GET', '/api/tasks', { token: tokenB });
-  const ownedByDemo = Array.isArray(demoList2.body) && demoList2.body.some((t) => t.id === (withUserId.body && withUserId.body.id));
-  const notOwnedByB = Array.isArray(bList2.body) && !bList2.body.some((t) => t.id === (withUserId.body && withUserId.body.id));
+  const demoList2Items = pageItems(demoList2.body);
+  const bList2Items = pageItems(bList2.body);
+  const ownedByDemo = demoList2Items.some((t) => t.id === (withUserId.body && withUserId.body.id));
+  const notOwnedByB = !bList2Items.some((t) => t.id === (withUserId.body && withUserId.body.id));
   record(
     'G1 client-supplied userId ignored; task owned by caller',
     withUserId.status === 201 && ownedByDemo && notOwnedByB,
@@ -440,10 +492,11 @@ async function main() {
     ? await call('DELETE', '/api/tasks/' + probeId, { token: demoToken })
     : { status: 0 };
   const demoList3 = await call('GET', '/api/tasks', { token: demoToken });
+  const demoList3Items = pageItems(demoList3.body);
   record(
     'G2 ownership probe removed; demo list back to the 5 seeded tasks',
-    probeDelete.status === 204 && demoList3.status === 200 && demoList3.body.length === 5,
-    'delete=' + probeDelete.status + ' count=' + (Array.isArray(demoList3.body) ? demoList3.body.length : 'n/a'),
+    probeDelete.status === 204 && demoList3.status === 200 && demoList3Items.length === 5,
+    'delete=' + probeDelete.status + ' count=' + demoList3Items.length,
   );
 
   // ---------- H. Missing task ids ----------

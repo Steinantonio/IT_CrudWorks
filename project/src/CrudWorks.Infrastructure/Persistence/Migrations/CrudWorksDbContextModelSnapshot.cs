@@ -50,8 +50,8 @@ namespace CrudWorks.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("UserId")
-                        .HasDatabaseName("IX_Tasks_UserId");
+                    b.HasIndex("UserId", "CreatedAtUtc", "Id")
+                        .HasDatabaseName("IX_Tasks_UserId_CreatedAtUtc_Id");
 
                     b.ToTable("Tasks", (string)null);
                 });

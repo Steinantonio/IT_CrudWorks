@@ -38,9 +38,9 @@ public sealed class DatabaseStartupTests
         var tasks = await client.SendAsync(request);
 
         Assert.Equal(HttpStatusCode.OK, tasks.StatusCode);
-        var taskList = await tasks.Content.ReadFromJsonAsync<TaskResource[]>();
-        Assert.NotNull(taskList);
-        Assert.True(taskList.Length >= 5, $"Expected at least five seeded tasks, got {taskList.Length}.");
+        var page = await tasks.Content.ReadFromJsonAsync<TaskPageResource>();
+        Assert.NotNull(page);
+        Assert.True(page.Items.Count >= 5, $"Expected at least five seeded tasks, got {page.Items.Count}.");
 
         // The flag created the database file itself.
         Assert.True(File.Exists(factory.DatabasePath));
@@ -68,4 +68,8 @@ public sealed class DatabaseStartupTests
         DateOnly? DueDate,
         DateTime CreatedAtUtc,
         DateTime UpdatedAtUtc);
+
+    private sealed record TaskPageResource(
+        IReadOnlyList<TaskResource> Items,
+        string? NextCursor);
 }

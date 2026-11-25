@@ -2,9 +2,11 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
+using System.Text.Json;
 using CrudWorks.Application.Auth;
 using CrudWorks.Infrastructure.Persistence.Seed;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.WebUtilities;
 
 namespace CrudWorks.Api.Tests.Tasks;
 
@@ -69,21 +71,171 @@ public sealed class TasksApiTests(CrudWorksApiFactory factory) : IClassFixture<C
         var response = await client.GetAsync("/api/tasks");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var tasks = await response.Content.ReadFromJsonAsync<List<TaskResource>>();
-        Assert.NotNull(tasks);
-        Assert.Equal(["Newer task", "Older task"], tasks.Select(task => task.Title));
-        Assert.All(tasks, task => Assert.NotEqual("Foreign task", task.Title));
+        var page = await response.Content.ReadFromJsonAsync<TaskPageResource>();
+        Assert.NotNull(page);
+        Assert.Equal(["Newer task", "Older task"], page.Items.Select(task => task.Title));
+        Assert.All(page.Items, task => Assert.NotEqual("Foreign task", task.Title));
+        Assert.Null(page.NextCursor);
     }
 
     [Fact]
-    public async Task List_ReturnsEmptyArrayForANewUser()
+    public async Task List_ReturnsEmptyEnvelopeForANewUser()
     {
         var client = await CreateAuthenticatedClientAsync();
 
         var response = await client.GetAsync("/api/tasks");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal("[]", (await response.Content.ReadAsStringAsync()).Trim());
+        var page = await response.Content.ReadFromJsonAsync<TaskPageResource>();
+        Assert.NotNull(page);
+        Assert.Empty(page.Items);
+        Assert.Null(page.NextCursor);
+    }
+
+    [Fact]
+    public async Task List_WithTwelveTasks_ReturnsTenAndTheNextPage()
+    {
+        var client = await CreateAuthenticatedClientAsync();
+        for (var index = 1; index <= 12; index++)
+        {
+            await CreateTaskAsync(client, $"Task {index}");
+            await Task.Delay(20);
+        }
+
+        var first = await client.GetFromJsonAsync<TaskPageResource>("/api/tasks");
+
+        Assert.NotNull(first);
+        Assert.Equal(10, first.Items.Count);
+        Assert.Equal(
+            ["Task 12", "Task 11", "Task 10", "Task 9", "Task 8",
+             "Task 7", "Task 6", "Task 5", "Task 4", "Task 3"],
+            first.Items.Select(task => task.Title));
+        Assert.NotNull(first.NextCursor);
+
+        var second = await client.GetFromJsonAsync<TaskPageResource>(
+            $"/api/tasks?cursor={Uri.EscapeDataString(first.NextCursor!)}");
+
+        Assert.NotNull(second);
+        Assert.Equal(["Task 2", "Task 1"], second.Items.Select(task => task.Title));
+        Assert.Null(second.NextCursor);
+        Assert.Empty(first.Items.Select(task => task.Id)
+            .Intersect(second.Items.Select(task => task.Id)));
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("101")]
+    public async Task List_WithAnOutOfRangeTake_Returns400WithTheTakeKey(string take)
+    {
+        var client = await CreateAuthenticatedClientAsync();
+
+        var response = await client.GetAsync($"/api/tasks?take={take}");
+
+        var problem = await ReadErrorsAsync(response);
+        Assert.True(problem.Errors.ContainsKey("take"));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(100)]
+    public async Task List_WithAnInRangeTake_Returns200(int take)
+    {
+        var client = await CreateAuthenticatedClientAsync();
+        await CreateTaskAsync(client, "One task");
+
+        var page = await client.GetFromJsonAsync<TaskPageResource>($"/api/tasks?take={take}");
+
+        Assert.NotNull(page);
+        Assert.Single(page.Items);
+        Assert.Null(page.NextCursor);
+    }
+
+    [Fact]
+    public async Task List_WithANonIntegerTake_Returns400WithTheTakeKey()
+    {
+        var client = await CreateAuthenticatedClientAsync();
+
+        var response = await client.GetAsync("/api/tasks?take=abc");
+
+        var problem = await ReadErrorsAsync(response);
+        Assert.True(problem.Errors.ContainsKey("take"));
+    }
+
+    [Fact]
+    public async Task List_WithAnInvalidCursor_Returns400WithTheCursorKey()
+    {
+        var client = await CreateAuthenticatedClientAsync();
+
+        var response = await client.GetAsync("/api/tasks?cursor=not-a-token");
+
+        var problem = await ReadErrorsAsync(response);
+        Assert.True(problem.Errors.ContainsKey("cursor"));
+    }
+
+    [Fact]
+    public async Task List_WithAnUnsupportedCursorVersion_Returns400WithTheCursorKey()
+    {
+        var client = await CreateAuthenticatedClientAsync();
+        var payload = JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            v = 2,
+            c = DateTime.UtcNow,
+            i = Guid.NewGuid(),
+        });
+        var cursor = WebEncoders.Base64UrlEncode(payload);
+
+        var response = await client.GetAsync($"/api/tasks?cursor={Uri.EscapeDataString(cursor)}");
+
+        var problem = await ReadErrorsAsync(response);
+        Assert.True(problem.Errors.ContainsKey("cursor"));
+    }
+
+    [Fact]
+    public async Task List_WithMalformedCursorPayloads_Returns400WithTheCursorKey()
+    {
+        var client = await CreateAuthenticatedClientAsync();
+        var payloads = new object[]
+        {
+            new { v = 1, c = DateTime.UtcNow }, // missing id
+            new { v = 1, c = DateTime.UtcNow, i = Guid.Empty }, // empty id
+            new { v = 1, c = DateTime.UtcNow, i = "not-a-guid" }, // invalid id
+            new { v = 1, i = Guid.NewGuid() }, // missing date
+            new { v = 1, c = "not-a-date", i = Guid.NewGuid() }, // invalid date
+            new { v = 1, c = "2026-11-11T18:30:00", i = Guid.NewGuid() }, // non-UTC date
+        };
+
+        foreach (var payload in payloads)
+        {
+            var cursor = EncodeCursor(payload);
+            var response = await client.GetAsync(
+                $"/api/tasks?cursor={Uri.EscapeDataString(cursor)}");
+
+            var problem = await ReadErrorsAsync(response);
+            Assert.True(problem.Errors.ContainsKey("cursor"));
+        }
+    }
+
+    [Fact]
+    public async Task List_WithACursorFromAnotherUser_DoesNotLeakTasks()
+    {
+        var caller = await CreateAuthenticatedClientAsync();
+        var other = await CreateAuthenticatedClientAsync();
+        for (var index = 1; index <= 12; index++)
+        {
+            await CreateTaskAsync(other, $"Other {index}");
+            await Task.Delay(20);
+        }
+
+        await CreateTaskAsync(caller, "Caller task");
+        var otherPage = await other.GetFromJsonAsync<TaskPageResource>("/api/tasks");
+        Assert.NotNull(otherPage);
+        Assert.NotNull(otherPage.NextCursor);
+
+        var callerPage = await caller.GetFromJsonAsync<TaskPageResource>(
+            $"/api/tasks?cursor={Uri.EscapeDataString(otherPage.NextCursor!)}");
+
+        Assert.NotNull(callerPage);
+        Assert.DoesNotContain(callerPage.Items, task => task.Title.StartsWith("Other ", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -185,13 +337,13 @@ public sealed class TasksApiTests(CrudWorksApiFactory factory) : IClassFixture<C
         });
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-        var callerTasks = await caller.GetFromJsonAsync<List<TaskResource>>("/api/tasks");
-        Assert.NotNull(callerTasks);
-        Assert.Contains(callerTasks, task => task.Title == "Caller-owned task");
+        var callerPage = await caller.GetFromJsonAsync<TaskPageResource>("/api/tasks");
+        Assert.NotNull(callerPage);
+        Assert.Contains(callerPage.Items, task => task.Title == "Caller-owned task");
 
-        var otherTasks = await other.GetFromJsonAsync<List<TaskResource>>("/api/tasks");
-        Assert.NotNull(otherTasks);
-        Assert.DoesNotContain(otherTasks, task => task.Title == "Caller-owned task");
+        var otherPage = await other.GetFromJsonAsync<TaskPageResource>("/api/tasks");
+        Assert.NotNull(otherPage);
+        Assert.DoesNotContain(otherPage.Items, task => task.Title == "Caller-owned task");
     }
 
     [Fact]
@@ -284,9 +436,9 @@ public sealed class TasksApiTests(CrudWorksApiFactory factory) : IClassFixture<C
         Assert.NotNull(problem);
         Assert.Equal("Task not found.", problem.Title);
 
-        var ownerList = await owner.GetFromJsonAsync<List<TaskResource>>("/api/tasks");
-        Assert.NotNull(ownerList);
-        Assert.Contains(ownerList, task => task.Id == created.Id);
+        var ownerPage = await owner.GetFromJsonAsync<TaskPageResource>("/api/tasks");
+        Assert.NotNull(ownerPage);
+        Assert.Contains(ownerPage.Items, task => task.Id == created.Id);
     }
 
     [Fact]
@@ -321,9 +473,9 @@ public sealed class TasksApiTests(CrudWorksApiFactory factory) : IClassFixture<C
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
 
-        var ownerList = await owner.GetFromJsonAsync<List<TaskResource>>("/api/tasks");
-        Assert.NotNull(ownerList);
-        Assert.Contains(ownerList, task => task.Id == created.Id);
+        var ownerPage = await owner.GetFromJsonAsync<TaskPageResource>("/api/tasks");
+        Assert.NotNull(ownerPage);
+        Assert.Contains(ownerPage.Items, task => task.Id == created.Id);
     }
 
     [Fact]
@@ -401,20 +553,24 @@ public sealed class TasksApiTests(CrudWorksApiFactory factory) : IClassFixture<C
         var response = await client.GetAsync("/api/tasks");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var tasks = await response.Content.ReadFromJsonAsync<List<TaskResource>>();
-        Assert.NotNull(tasks);
-        Assert.Equal(5, tasks.Count);
+        var page = await response.Content.ReadFromJsonAsync<TaskPageResource>();
+        Assert.NotNull(page);
+        Assert.Equal(5, page.Items.Count);
+        Assert.Null(page.NextCursor);
         // Story-shaped demo data for a busy professional, newest first; every task
         // carries a description and a due date so the demo shows the full feature.
         Assert.Equal(["Prepare the quarterly report", "Review the vendor contract",
             "Book the dentist appointment", "Renew the passport",
-            "Send the tax documents to the accountant"], tasks.Select(task => task.Title));
+            "Send the tax documents to the accountant"], page.Items.Select(task => task.Title));
         Assert.Equal(["InProgress", "InProgress", "Todo", "Todo", "Done"],
-            tasks.Select(task => task.Status));
-        Assert.All(tasks, task => Assert.False(string.IsNullOrWhiteSpace(task.Description)));
-        Assert.All(tasks, task => Assert.NotNull(task.DueDate));
-        Assert.All(tasks, task => Assert.True(task.CreatedAtUtc.Kind is DateTimeKind.Utc));
+            page.Items.Select(task => task.Status));
+        Assert.All(page.Items, task => Assert.False(string.IsNullOrWhiteSpace(task.Description)));
+        Assert.All(page.Items, task => Assert.NotNull(task.DueDate));
+        Assert.All(page.Items, task => Assert.True(task.CreatedAtUtc.Kind is DateTimeKind.Utc));
     }
+
+    private static string EncodeCursor(object payload) =>
+        WebEncoders.Base64UrlEncode(JsonSerializer.SerializeToUtf8Bytes(payload));
 
     private static async Task<ValidationProblemDetails> ReadErrorsAsync(HttpResponseMessage response)
     {
@@ -480,4 +636,8 @@ public sealed class TasksApiTests(CrudWorksApiFactory factory) : IClassFixture<C
         DateOnly? DueDate,
         DateTime CreatedAtUtc,
         DateTime UpdatedAtUtc);
+
+    private sealed record TaskPageResource(
+        IReadOnlyList<TaskResource> Items,
+        string? NextCursor);
 }

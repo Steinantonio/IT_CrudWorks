@@ -11,12 +11,39 @@ namespace CrudWorks.Application.Tasks;
 /// </summary>
 public sealed class TaskService(ITaskRepository taskRepository, IUnitOfWork unitOfWork) : ITaskService
 {
+    public const int DefaultPageSize = 10;
+    public const int MaxPageSize = 100;
+
     private const string NotFoundMessage = "Task not found.";
 
-    public async Task<IReadOnlyList<TaskResponse>> ListAsync(Guid userId, CancellationToken cancellationToken)
+    public async Task<TaskPage> ListAsync(
+        Guid userId,
+        TaskPageCursor? cursor,
+        int take,
+        CancellationToken cancellationToken)
     {
-        var tasks = await taskRepository.ListByOwnerAsync(userId, cancellationToken);
-        return tasks.Select(task => task.ToTaskResponse()).ToList();
+        var pageSize = ValidatePageSize(take);
+        var tasks = await taskRepository.ListPageAsync(userId, cursor, pageSize, cancellationToken);
+        var hasMore = tasks.Count > pageSize;
+        var items = hasMore ? tasks.Take(pageSize).ToList() : tasks;
+        var nextCursor = hasMore
+            ? new TaskPageCursor(items[^1].CreatedAtUtc, items[^1].Id)
+            : null;
+
+        return new TaskPage(items.Select(task => task.ToTaskResponse()).ToList(), nextCursor);
+    }
+
+    private static int ValidatePageSize(int take)
+    {
+        if (take is < 1 or > MaxPageSize)
+        {
+            throw new ValidationException(new Dictionary<string, string[]>
+            {
+                ["take"] = [$"Page size must be between 1 and {MaxPageSize}."],
+            });
+        }
+
+        return take;
     }
 
     public async Task<TaskResponse> GetAsync(Guid userId, Guid id, CancellationToken cancellationToken)

@@ -76,8 +76,8 @@ npm run build
 Backend tests use per-factory temporary SQLite files; no test shares mutable
 state.
 
-Current counts: **166 backend tests** (Domain 37, Application 57,
-Infrastructure 25, Api 47) and **80 frontend tests** (11 files).
+Current counts: **216 backend tests** (Domain 37, Application 62,
+Infrastructure 28, Architecture 6, Api 83) and **104 frontend tests** (13 files).
 
 ### Coverage
 
@@ -119,7 +119,7 @@ Full contract: `docs/adr/0004-api-contract.md`.
 | POST | `/api/auth/register` | anonymous | 201 + `Location` | 400, 409 |
 | POST | `/api/auth/login` | anonymous | 200 + token | 400, 401 |
 | GET | `/api/auth/me` | bearer | 200 | 401 |
-| GET | `/api/tasks` | bearer | 200 + list | 401 |
+| GET | `/api/tasks?take=&cursor=` | bearer | 200 + `{items,nextCursor}` | 400, 401 |
 | GET | `/api/tasks/{id}` | bearer | 200 | 401, 404 |
 | POST | `/api/tasks` | bearer | 201 + `Location` | 400, 401 |
 | PUT | `/api/tasks/{id}` | bearer | 200 | 400, 401, 404 |
@@ -128,6 +128,10 @@ Full contract: `docs/adr/0004-api-contract.md`.
 Errors use RFC 7807 `application/problem+json`; validation failures include an
 `errors` map. Another user's task returns `404`, never `403`: the API does not
 confirm that the resource exists.
+
+`GET /api/tasks` is keyset-paginated (ADR-0006): `take` defaults to 10 with a
+server cap of 100, and `cursor` is the opaque `nextCursor` from the previous
+page. An invalid cursor or `take` returns `400` with the field in `errors`.
 
 Example:
 

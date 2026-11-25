@@ -135,6 +135,41 @@ public sealed class OpenApiContractTests : IClassFixture<CrudWorksApiFactory>, I
     }
 
     [Fact]
+    public async Task TaskList_DocumentsPaginationParametersAndEnvelope()
+    {
+        using var document = await GetDevelopmentDocumentAsync();
+
+        var operation = document.RootElement.GetProperty("paths").GetProperty("/api/tasks").GetProperty("get");
+        var parameters = operation.GetProperty("parameters").EnumerateArray()
+            .ToDictionary(
+                parameter => parameter.GetProperty("name").GetString()!,
+                StringComparer.Ordinal);
+
+        Assert.Equal("query", parameters["cursor"].GetProperty("in").GetString());
+        Assert.Equal("string", SingleType(parameters["cursor"].GetProperty("schema")));
+
+        var take = parameters["take"];
+        Assert.Equal("query", take.GetProperty("in").GetString());
+        Assert.Equal("integer", SingleType(take.GetProperty("schema")));
+        Assert.Equal(1, take.GetProperty("schema").GetProperty("minimum").GetInt32());
+        Assert.Equal(100, take.GetProperty("schema").GetProperty("maximum").GetInt32());
+        Assert.Equal(10, take.GetProperty("schema").GetProperty("default").GetInt32());
+
+        var schema = Schema(document, "TaskPageResponse");
+        Assert.Equal(["items", "nextCursor"], Required(schema));
+
+        var items = schema.GetProperty("properties").GetProperty("items");
+        Assert.Equal("array", SingleType(items));
+        Assert.Equal(
+            "TaskResponse",
+            items.GetProperty("items").GetProperty("$ref").GetString()!.Split('/')[^1]);
+
+        var nextCursor = schema.GetProperty("properties").GetProperty("nextCursor");
+        Assert.Contains("null", Types(nextCursor));
+        Assert.Contains("string", Types(nextCursor));
+    }
+
+    [Fact]
     public async Task RequestSchemas_ReflectContractRequirednessAndNullability()
     {
         using var document = await GetDevelopmentDocumentAsync();
@@ -201,7 +236,7 @@ public sealed class OpenApiContractTests : IClassFixture<CrudWorksApiFactory>, I
             [("/api/auth/register", "post")] = ["201", "400", "409", "500"],
             [("/api/auth/login", "post")] = ["200", "400", "401", "500"],
             [("/api/auth/me", "get")] = ["200", "401", "500"],
-            [("/api/tasks", "get")] = ["200", "401", "500"],
+            [("/api/tasks", "get")] = ["200", "400", "401", "500"],
             [("/api/tasks", "post")] = ["201", "400", "401", "500"],
             [("/api/tasks/{id}", "get")] = ["200", "401", "404", "500"],
             [("/api/tasks/{id}", "put")] = ["200", "400", "401", "404", "500"],

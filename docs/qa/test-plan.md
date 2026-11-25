@@ -25,8 +25,15 @@
   resulting tree — **166 backend + 80 frontend (11 files) + 37 live API + 6
   self-test = 289 checks, all green**; the auth screens and the task screens were
   measured at 360/768/1280 with no horizontal overflow and a clean console
-  (`docs/ai/020`). Figures are reported per wave wherever they differ, and the
-  wave-5 figures are the **current release numbers** (§"Test-count drift").
+  (`docs/ai/020`).
+  **SPEC-008 pagination gate (2026-11-25)** is the current release measurement: keyset pagination
+  (ADR-0006 / SPEC-008). The gate was re-run — **216 backend + 104 frontend
+  (13 files) + 40 live API + 6 self-test = 366 checks, all green**; the E2E ran
+  twice on the same database and restored the seeded baseline both times; the
+  10,000-row smoke recorded p95 2.00/4.33 ms with the composite index in the
+  query plan (`docs/qa/clean-run-report.md` §9). Figures are reported per wave
+  wherever they differ, and the SPEC-008 figures are the **current release
+  numbers** (§"Test-count drift").
 - **Scope:** the whole exercise — backend (Domain, Application, Infrastructure, Api), the React client, and the API-level end-to-end flow.
 - **Oracle:** `docs/00-brief.md` (R-01…R-30), `specs/001-auth/spec.md`, `specs/002-task-crud/spec.md`, `specs/003-web-client/spec.md` (AC-001-01…AC-003-10), `docs/adr/0004-api-contract.md`, `docs/02-definition-of-done.md` §6.
 - **Evidence sources:** `docs/qa/clean-run-report.md` (wave-1 clean run and the
@@ -260,7 +267,7 @@ manual check that the automation cannot replace.
 | Passwords are hashed, never stored or returned in plaintext | `Hash_DoesNotStoreThePlaintextPassword`, `Verify_WithCorrectPassword_ReturnsTrue`, `Verify_WithWrongPassword_ReturnsFalse`, `Verify_WithMalformedHash_ReturnsFalse`, `Verify_WithNullHash_ReturnsFalse`, `Verify_WithEmptyHash_ReturnsFalse`; `Register_WithValidPayload_Returns201WithLocationAndUser` (asserts the body contains neither the password nor `passwordHash`) | `project/tests/CrudWorks.Infrastructure.Tests/Security/PasswordHasherAdapterTests.cs`; `AuthApiTests.cs` | Automated |
 | The token is signed with the configured key and carries the required claims | `Create_IssuesSignedTokenWithRequiredClaims`, `Create_WithAnotherKey_FailsValidation` | `JwtTokenServiceTests.cs` | Automated |
 | A failed login logs the email domain only | `LoginAsync_WithUnknownEmail_AuditsOnlyTheEmailDomain`, `LoginAsync_WithWrongPassword_AuditsOnlyTheEmailDomain` | `AuthServiceTests.cs` | Automated |
-| `IX_Tasks_UserId` index and the FK to `Users` exist | `TasksTable_HasTheUserIdIndex`, `TasksTable_EnforcesTheForeignKeyToUsers` | `TaskRepositoryTests.cs` | Automated |
+| `IX_Tasks_UserId_CreatedAtUtc_Id` index (columns and order) and the FK to `Users` exist | `TasksTable_HasTheCompositePaginationIndex`, `TasksTable_EnforcesTheForeignKeyToUsers` | `TaskRepositoryTests.cs` | Automated |
 | Duplicate email is rejected by the database, not only by the application | `SaveChangesAsync_WithDuplicateEmail_ThrowsConflictAndKeepsOneUser` | `UserRepositoryTests.cs` | Automated |
 | The seed is idempotent and covers all three statuses | `Seeder_WithEmptyTasks_SeedsFiveTasksAcrossAllStatusesIdempotently`; checks `A2`, `A3`, `G2` | `TaskRepositoryTests.cs`; `docs/qa/e2e-api-check.js` | Automated |
 | An IDOR 404 body carries no task data | `a standard 404 ProblemDetails body is not reported as a leak`, `a full task resource in the error body is reported as a leak`, `a task status enum string in the error body is reported as a leak`, `the victim title echoed by the error body is reported as a leak`, `the victim id echoed in the raw error body is reported as a leak`, `the numeric ProblemDetails status is not mistaken for the task status enum` | `docs/qa/e2e-api-check.test.js` | Automated |

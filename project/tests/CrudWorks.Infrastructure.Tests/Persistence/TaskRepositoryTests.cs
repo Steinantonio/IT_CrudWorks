@@ -38,7 +38,7 @@ public sealed class TaskRepositoryTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Migration_AppliesAddTasks()
+    public async Task Migration_AppliesTaskMigrations()
     {
         await using var dbContext = CreateContext();
 
@@ -46,21 +46,39 @@ public sealed class TaskRepositoryTests : IAsyncLifetime
         var pending = await dbContext.Database.GetPendingMigrationsAsync();
 
         Assert.Contains(applied, migration => migration.EndsWith("_AddTasks", StringComparison.Ordinal));
+        Assert.Contains(applied, migration =>
+            migration.EndsWith("_AddTaskPaginationIndex", StringComparison.Ordinal));
         Assert.Empty(pending);
     }
 
     [Fact]
-    public async Task TasksTable_HasTheUserIdIndex()
+    public async Task TasksTable_HasTheCompositePaginationIndex()
     {
         await using var dbContext = CreateContext();
         var connection = (SqliteConnection)dbContext.Database.GetDbConnection();
 
         using var command = connection.CreateCommand();
         command.CommandText =
-            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'IX_Tasks_UserId'";
-        var count = Convert.ToInt32(await command.ExecuteScalarAsync());
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'IX_Tasks_UserId_CreatedAtUtc_Id'";
+        var compositeCount = Convert.ToInt32(await command.ExecuteScalarAsync());
 
-        Assert.Equal(1, count);
+        command.CommandText =
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'IX_Tasks_UserId'";
+        var oldCount = Convert.ToInt32(await command.ExecuteScalarAsync());
+
+        command.CommandText = "PRAGMA index_info('IX_Tasks_UserId_CreatedAtUtc_Id')";
+        var columns = new List<string>();
+        using (var reader = await command.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync())
+            {
+                columns.Add(reader.GetString(2));
+            }
+        }
+
+        Assert.Equal(1, compositeCount);
+        Assert.Equal(0, oldCount);
+        Assert.Equal(["UserId", "CreatedAtUtc", "Id"], columns);
     }
 
     [Fact]
@@ -192,40 +210,106 @@ public sealed class TaskRepositoryTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task ListByOwnerAsync_OrdersByCreatedAtUtcDescending()
+    public async Task ListPageAsync_OrdersByCreatedAtUtcDescending()
     {
         // The factory stamps every task with UtcNow, so the seeder-style staggered
         // timestamps are written directly to make the ordering observable.
-        var first = SeedTask("First task", minutesAgo: 30);
-        var second = SeedTask("Second task", minutesAgo: 20);
-        var third = SeedTask("Third task", minutesAgo: 10);
+        SeedTask("First task", minutesAgo: 30);
+        SeedTask("Second task", minutesAgo: 20);
+        SeedTask("Third task", minutesAgo: 10);
 
         await using var readContext = CreateContext();
         var tasks = await new TaskRepository(readContext)
-            .ListByOwnerAsync(_ownerId, CancellationToken.None);
+            .ListPageAsync(_ownerId, null, 10, CancellationToken.None);
 
         Assert.Equal(["Third task", "Second task", "First task"], tasks.Select(task => task.Title));
         Assert.All(tasks, task => Assert.Equal(_ownerId, task.UserId));
     }
 
     [Fact]
-    public async Task ListByOwnerAsync_ReturnsOnlyTheCallerTasks()
+    public async Task ListPageAsync_ReturnsOnlyTheCallerTasks()
     {
         SeedTask("Owned task", minutesAgo: 5);
 
         var strangerId = await GetStrangerIdAsync();
-        await using (var writeContext = CreateContext())
-        {
-            var strangerTask = TaskItem.Create(strangerId, "Stranger task", null, null, null);
-            await new TaskRepository(writeContext).AddAsync(strangerTask, CancellationToken.None);
-            await new UnitOfWork(writeContext).SaveChangesAsync(CancellationToken.None);
-        }
+        SeedTaskFor(strangerId, "Stranger task", minutesAgo: 1);
 
         await using var readContext = CreateContext();
         var tasks = await new TaskRepository(readContext)
-            .ListByOwnerAsync(_ownerId, CancellationToken.None);
+            .ListPageAsync(_ownerId, null, 10, CancellationToken.None);
 
         Assert.Equal(["Owned task"], tasks.Select(task => task.Title));
+    }
+
+    [Fact]
+    public async Task ListPageAsync_WithACursor_ReturnsTheNextPageWithoutDuplicates()
+    {
+        for (var index = 1; index <= 12; index++)
+        {
+            SeedTask($"Task {index}", minutesAgo: index);
+        }
+
+        await using var firstContext = CreateContext();
+        var firstPage = await new TaskRepository(firstContext)
+            .ListPageAsync(_ownerId, null, 5, CancellationToken.None);
+
+        Assert.Equal(6, firstPage.Count);
+        Assert.Equal(
+            ["Task 1", "Task 2", "Task 3", "Task 4", "Task 5", "Task 6"],
+            firstPage.Select(task => task.Title));
+
+        var cursor = new TaskPageCursor(firstPage[4].CreatedAtUtc, firstPage[4].Id);
+
+        await using var secondContext = CreateContext();
+        var secondPage = await new TaskRepository(secondContext)
+            .ListPageAsync(_ownerId, cursor, 5, CancellationToken.None);
+
+        Assert.Equal(
+            ["Task 6", "Task 7", "Task 8", "Task 9", "Task 10", "Task 11"],
+            secondPage.Select(task => task.Title));
+        Assert.DoesNotContain(secondPage, task => firstPage.Take(5).Any(first => first.Id == task.Id));
+    }
+
+    [Fact]
+    public async Task ListPageAsync_WithACursorFromAnotherUser_KeepsTheOwnerFilter()
+    {
+        SeedTask("Owner newer", minutesAgo: 1);
+        SeedTask("Owner older", minutesAgo: 10);
+        var strangerId = await GetStrangerIdAsync();
+        var strangerTask = SeedTaskFor(strangerId, "Stranger task", minutesAgo: 5);
+        // Older than the cursor: without the UserId filter this row would be returned.
+        SeedTaskFor(strangerId, "Stranger older", minutesAgo: 20);
+        var cursor = new TaskPageCursor(strangerTask.CreatedAtUtc, strangerTask.Id);
+
+        await using var readContext = CreateContext();
+        var page = await new TaskRepository(readContext)
+            .ListPageAsync(_ownerId, cursor, 10, CancellationToken.None);
+
+        Assert.Equal(["Owner older"], page.Select(task => task.Title));
+    }
+
+    [Fact]
+    public async Task ListPageAsync_WithTheSameTimestamp_UsesTheIdTieBreaker()
+    {
+        var timestamp = DateTime.UtcNow.AddMinutes(-5);
+        SeedTaskAt("Same time A", timestamp);
+        SeedTaskAt("Same time B", timestamp);
+
+        await using var firstContext = CreateContext();
+        var firstPage = await new TaskRepository(firstContext)
+            .ListPageAsync(_ownerId, null, 1, CancellationToken.None);
+
+        Assert.Equal(2, firstPage.Count);
+        var cursor = new TaskPageCursor(firstPage[0].CreatedAtUtc, firstPage[0].Id);
+
+        await using var secondContext = CreateContext();
+        var secondPage = await new TaskRepository(secondContext)
+            .ListPageAsync(_ownerId, cursor, 1, CancellationToken.None);
+
+        Assert.Single(secondPage);
+        Assert.NotEqual(firstPage[0].Id, secondPage[0].Id);
+        Assert.Equal(timestamp, firstPage[0].CreatedAtUtc);
+        Assert.Equal(timestamp, secondPage[0].CreatedAtUtc);
     }
 
     [Fact]
@@ -300,15 +384,22 @@ public sealed class TaskRepositoryTests : IAsyncLifetime
         Assert.All(seeded, task => Assert.NotNull(task.DueDate));
     }
 
-    private TaskItem SeedTask(string title, int minutesAgo)
+    private TaskItem SeedTask(string title, int minutesAgo) =>
+        SeedTaskFor(_ownerId, title, minutesAgo);
+
+    private TaskItem SeedTaskFor(Guid userId, string title, int minutesAgo) =>
+        SeedTaskAt(userId, title, DateTime.UtcNow.AddMinutes(-minutesAgo));
+
+    private TaskItem SeedTaskAt(string title, DateTime createdAtUtc) =>
+        SeedTaskAt(_ownerId, title, createdAtUtc);
+
+    private TaskItem SeedTaskAt(Guid userId, string title, DateTime createdAtUtc)
     {
-        var task = TaskItem.Create(_ownerId, title, null, TaskItemStatus.Todo, null);
+        var task = TaskItem.Create(userId, title, null, TaskItemStatus.Todo, null);
         using var dbContext = CreateContext();
         dbContext.Tasks.Add(task);
-        dbContext.Entry(task).Property(candidate => candidate.CreatedAtUtc).CurrentValue =
-            DateTime.UtcNow.AddMinutes(-minutesAgo);
-        dbContext.Entry(task).Property(candidate => candidate.UpdatedAtUtc).CurrentValue =
-            DateTime.UtcNow.AddMinutes(-minutesAgo);
+        dbContext.Entry(task).Property(candidate => candidate.CreatedAtUtc).CurrentValue = createdAtUtc;
+        dbContext.Entry(task).Property(candidate => candidate.UpdatedAtUtc).CurrentValue = createdAtUtc;
         dbContext.SaveChanges();
         return task;
     }

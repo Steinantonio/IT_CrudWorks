@@ -163,9 +163,12 @@ case-sensitively: `"todo"` is not a valid `status` and returns `400`.
 
 ### `GET /api/tasks`
 
-- `200` array of the caller's tasks, ordered by `createdAtUtc` descending.
-- Empty list → `200 []`, never `404`.
-- No pagination or filtering in this timebox.
+- Keyset-paginated (ADR-0006): `take` defaults to 10 and accepts `1..100`;
+  `cursor` is the opaque `nextCursor` from the previous page.
+- `200` envelope `{ "items": [...], "nextCursor": "..." | null }`, ordered by
+  `createdAtUtc DESC, id DESC`.
+- Empty page → `{ "items": [], "nextCursor": null }`, never `404`.
+- `400` for an invalid `take` or cursor; `401` without a token.
 
 ### `GET /api/tasks/{id}`
 
@@ -203,9 +206,8 @@ case-sensitively: `"todo"` is not a valid `status` and returns `400`.
 
 ### Non-goals
 
-- No pagination, filtering, or sorting parameters: the demo dataset is small and
-  `GET /api/tasks` returns every task owned by the caller, newest first. Adding
-  paging is a contract change and would need a new ADR.
+- No offset/page-number mode, server-side sort, search, or status filter. Cursor
+  pagination is defined in ADR-0006; any other query feature needs its own ADR.
 
 ## 5. Validation matrix
 
@@ -270,3 +272,4 @@ The frontend mirrors these rules but the API is authoritative.
 | Date | Change | Why |
 | --- | --- | --- |
 | 2026-11-12 | Clarified §1/§4/§5: a client-supplied `userId` is **ignored** (request DTOs contain no `userId` property), not rejected with `400`; the owner is always the token's `sub` claim. Added: status names are parsed case-sensitively (`"todo"` → `400`). | Ownership is a server invariant; returning `400` on the extra field would only confirm the field is read, contradicting the ownership model. Matches the implemented contract (see `docs/ai/007-task-backend-slice.md`). |
+| 2026-11-25 | §4 `GET /api/tasks` replaced by the keyset-paginated envelope from ADR-0006; the “no pagination” non-goal is superseded. | The owner approved G1–G4; SPEC-008 implemented the contract. |

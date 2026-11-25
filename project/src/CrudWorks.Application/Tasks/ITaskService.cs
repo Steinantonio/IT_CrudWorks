@@ -6,7 +6,11 @@ namespace CrudWorks.Application.Tasks;
 /// </summary>
 public interface ITaskService
 {
-    Task<IReadOnlyList<TaskResponse>> ListAsync(Guid userId, CancellationToken cancellationToken);
+    Task<TaskPage> ListAsync(
+        Guid userId,
+        TaskPageCursor? cursor,
+        int take,
+        CancellationToken cancellationToken);
 
     Task<TaskResponse> GetAsync(Guid userId, Guid id, CancellationToken cancellationToken);
 

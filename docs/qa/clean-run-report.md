@@ -789,3 +789,27 @@ audit; Chromium only (no Safari, Firefox, Edge or mobile browser); contrast
 computed by hand rather than measured; emulated viewports; and the observation
 **during the demo rehearsal**, which has not happened yet — that item belongs
 to the Orchestrator (DoD §"Open items").
+
+## 9. SPEC-008 pagination gate (2026-11-25)
+
+Run on the current tree against a fresh temporary SQLite database. The API was
+started with `ASPNETCORE_ENVIRONMENT=Development` and the same
+`ConnectionStrings__Default`; `CRUDWORKS_DB` pointed at that file so the E2E
+cleanup inspected the run's database.
+
+| Step | Command | Result |
+| --- | --- | --- |
+| Backend build | `dotnet build CrudWorks.slnx --verbosity minimal` | 0 warnings, 0 errors |
+| Backend tests | `dotnet test CrudWorks.slnx --verbosity minimal` | **216 passed, 0 failed** (Domain 37, Application 62, Infrastructure 28, Architecture 6, Api 83) |
+| Frontend lint | `npm run lint` | clean (oxlint) |
+| Frontend tests | `npm run test` | **13 files, 104 tests passed** |
+| Frontend build | `npm run build` | succeeded |
+| API health | `GET http://localhost:5080/api/health` | **200** |
+| Live API E2E (run 1) | `node docs/qa/e2e-api-check.js` | **`SUMMARY 40/40 checks passed`**, `E2E_RUN1_EXIT=0`; cleanup restored 1 user / 5 tasks |
+| Live API E2E (run 2, same DB) | `node docs/qa/e2e-api-check.js` | **`SUMMARY 40/40 checks passed`**, `E2E_RUN2_EXIT=0`; cleanup restored 1 user / 5 tasks |
+| Leak-detector self-test | `node --test docs/qa/e2e-api-check.test.js` | **6 tests, 6 pass, 0 fail** |
+| Pagination smoke | `dotnet run --project project/tools/pagination-smoke` | p95 **2.00 ms** first page / **4.33 ms** cursor page (repeated runs below 10 ms); `plan=SEARCH Tasks USING INDEX IX_Tasks_UserId_CreatedAtUtc_Id (UserId=? AND CreatedAtUtc<?)` |
+
+The 37/37 figures in the earlier sections are historical wave-4/5 evidence; the
+current gate is **40/40**. The E2E script now reads the `{items,nextCursor}`
+envelope and includes A5–A7 for the first, cursor, and final pages.

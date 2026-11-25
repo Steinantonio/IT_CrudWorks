@@ -92,7 +92,7 @@ describe('TaskFormPage (create)', () => {
       }
 
       if (url === '/api/tasks') {
-        return jsonResponse([createdTask])
+        return jsonResponse({ items: [createdTask], nextCursor: null })
       }
 
       throw new Error(`Unexpected request: ${url}`)
@@ -132,7 +132,7 @@ describe('TaskFormPage (create)', () => {
       }
 
       if (url === '/api/tasks') {
-        return jsonResponse([])
+        return jsonResponse({ items: [], nextCursor: null })
       }
 
       throw new Error(`Unexpected request: ${url}`)
@@ -161,7 +161,7 @@ describe('TaskFormPage (create)', () => {
     signIn()
     const fetchMock = installFetchMock((url, init) => {
       if (url === '/api/tasks' && !init?.method) {
-        return jsonResponse([])
+        return jsonResponse({ items: [], nextCursor: null })
       }
 
       throw new Error(`Unexpected request: ${url}`)
@@ -235,7 +235,7 @@ describe('TaskFormPage (create)', () => {
       }
 
       if (url === '/api/tasks') {
-        return jsonResponse([createdTask])
+        return jsonResponse({ items: [createdTask], nextCursor: null })
       }
 
       throw new Error(`Unexpected request: ${url}`)
@@ -257,7 +257,7 @@ describe('TaskFormPage (create)', () => {
     signIn()
     const fetchMock = installFetchMock((url) => {
       if (url === '/api/tasks') {
-        return jsonResponse([])
+        return jsonResponse({ items: [], nextCursor: null })
       }
 
       throw new Error(`Unexpected request: ${url}`)
@@ -288,7 +288,10 @@ describe('TaskFormPage (edit)', () => {
       }
 
       if (url === '/api/tasks') {
-        return jsonResponse([{ ...existingTask, title: 'Write the final proposal' }])
+        return jsonResponse({
+          items: [{ ...existingTask, title: 'Write the final proposal' }],
+          nextCursor: null,
+        })
       }
 
       throw new Error(`Unexpected request: ${url}`)

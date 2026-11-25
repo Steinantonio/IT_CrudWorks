@@ -6,14 +6,28 @@ namespace CrudWorks.Infrastructure.Persistence;
 
 public sealed class TaskRepository(CrudWorksDbContext dbContext) : ITaskRepository
 {
-    public async Task<IReadOnlyList<TaskItem>> ListByOwnerAsync(Guid userId, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<TaskItem>> ListPageAsync(
+        Guid userId,
+        TaskPageCursor? cursor,
+        int take,
+        CancellationToken cancellationToken)
     {
-        var tasks = await dbContext.Tasks
+        var query = dbContext.Tasks
             .AsNoTracking()
-            .Where(task => task.UserId == userId)
+            .Where(task => task.UserId == userId);
+
+        if (cursor is not null)
+        {
+            query = query.Where(task =>
+                task.CreatedAtUtc < cursor.CreatedAtUtc
+                || (task.CreatedAtUtc == cursor.CreatedAtUtc && task.Id.CompareTo(cursor.Id) < 0));
+        }
+
+        return await query
             .OrderByDescending(task => task.CreatedAtUtc)
+            .ThenByDescending(task => task.Id)
+            .Take(take + 1)
             .ToListAsync(cancellationToken);
-        return tasks;
     }
 
     /// <summary>Tracked on purpose: the same find feeds the update and delete use

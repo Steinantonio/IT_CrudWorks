@@ -689,6 +689,13 @@ code {
   font-size: 0.95rem;
 }
 
+.task-pagination {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+}
+
 /* Inline description editing on the card */
 
 .task-description-toggle {

@@ -5,8 +5,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from './api'
 import {
   createTask,
+  CursorExpiredError,
   getTask,
-  listTasks,
+  listTasksPage,
   removeTask,
   setUnauthorizedHandler,
   updateTask,
@@ -45,13 +46,14 @@ afterEach(() => {
 })
 
 describe('task API functions', () => {
-  it('sends the bearer token and returns the list', async () => {
+  it('sends the bearer token and returns the page', async () => {
     writeSession(session)
-    const fetchMock = installFetchMock(() => jsonResponse([task]))
+    const page = { items: [task], nextCursor: null }
+    const fetchMock = installFetchMock(() => jsonResponse(page))
 
-    const tasks = await listTasks(session.accessToken)
+    const result = await listTasksPage(session.accessToken)
 
-    expect(tasks).toEqual([task])
+    expect(result).toEqual(page)
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/tasks',
       expect.objectContaining({
@@ -60,6 +62,35 @@ describe('task API functions', () => {
     )
     const init = fetchMock.mock.calls[0]?.[1]
     expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer token-abc')
+  })
+
+  it('builds the take and cursor query string', async () => {
+    installFetchMock(() => jsonResponse({ items: [task], nextCursor: null }))
+
+    await listTasksPage(session.accessToken, { take: 10, cursor: 'cursor-1' })
+
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith(
+      '/api/tasks?take=10&cursor=cursor-1',
+      expect.anything(),
+    )
+  })
+
+  it('wraps a 400 from a cursor request as CursorExpiredError', async () => {
+    installFetchMock(() =>
+      jsonResponse({ title: 'Cursor is invalid.', status: 400 }, 400),
+    )
+
+    await expect(
+      listTasksPage(session.accessToken, { cursor: 'stale' }),
+    ).rejects.toBeInstanceOf(CursorExpiredError)
+  })
+
+  it('does not wrap a 400 from the first page', async () => {
+    installFetchMock(() =>
+      jsonResponse({ title: 'Page size must be between 1 and 100.', status: 400 }, 400),
+    )
+
+    await expect(listTasksPage(session.accessToken)).rejects.toBeInstanceOf(ApiError)
   })
 
   it('gets a single task by id', async () => {
@@ -125,7 +156,7 @@ describe('unauthorized reaction', () => {
       jsonResponse({ title: 'Authentication required', status: 401 }, 401),
     )
 
-    await expect(listTasks(session.accessToken)).rejects.toMatchObject<Partial<ApiError>>({
+    await expect(listTasksPage(session.accessToken)).rejects.toMatchObject<Partial<ApiError>>({
       name: 'ApiError',
       status: 401,
     })
@@ -141,7 +172,7 @@ describe('unauthorized reaction', () => {
       jsonResponse({ title: 'Authentication required', status: 401 }, 401),
     )
 
-    await expect(listTasks('stale-token')).rejects.toBeInstanceOf(ApiError)
+    await expect(listTasksPage('stale-token')).rejects.toBeInstanceOf(ApiError)
 
     expect(onUnauthorized).not.toHaveBeenCalled()
   })
@@ -154,9 +185,9 @@ describe('unauthorized reaction', () => {
       jsonResponse({ title: 'Authentication required', status: 401 }, 401),
     )
 
-    await expect(listTasks(session.accessToken)).rejects.toBeInstanceOf(ApiError)
-    await expect(listTasks(session.accessToken)).rejects.toBeInstanceOf(ApiError)
-    await expect(listTasks(session.accessToken)).rejects.toBeInstanceOf(ApiError)
+    await expect(listTasksPage(session.accessToken)).rejects.toBeInstanceOf(ApiError)
+    await expect(listTasksPage(session.accessToken)).rejects.toBeInstanceOf(ApiError)
+    await expect(listTasksPage(session.accessToken)).rejects.toBeInstanceOf(ApiError)
 
     expect(onUnauthorized).toHaveBeenCalledTimes(1)
     expect(sessionStorage.getItem(SESSION_STORAGE_KEY)).toBeNull()

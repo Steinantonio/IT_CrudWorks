@@ -95,7 +95,7 @@ Full contract (payloads, error bodies, examples): `docs/adr/0004-api-contract.md
 | POST | `/api/auth/register` | anonymous | 201 + `Location` | 400, 409 |
 | POST | `/api/auth/login` | anonymous | 200 + token | 400, 401 |
 | GET | `/api/auth/me` | bearer | 200 | 401 |
-| GET | `/api/tasks` | bearer | 200 + list | 401 |
+| GET | `/api/tasks?take=&cursor=` | bearer | 200 + `{items,nextCursor}` | 400, 401 |
 | GET | `/api/tasks/{id}` | bearer | 200 | 401, 404 |
 | POST | `/api/tasks` | bearer | 201 + `Location` | 400, 401 |
 | PUT | `/api/tasks/{id}` | bearer | 200 | 400, 401, 404 |
@@ -103,17 +103,19 @@ Full contract (payloads, error bodies, examples): `docs/adr/0004-api-contract.md
 
 Errors use RFC 7807 `application/problem+json`. Another user's task returns
 `404`, never `403` — the API does not confirm the resource exists (IDOR seam).
+`GET /api/tasks` is keyset-paginated (ADR-0006): `take` defaults to 10 with a cap
+of 100, and `cursor` is the opaque `nextCursor` from the previous page.
 
 ## Testing
 
 | Suite | Command (from `project/`) | Current state |
 | --- | --- | --- |
 | Backend build | `dotnet build CrudWorks.slnx -warnaserror` | 0 warnings, 0 errors |
-| Backend tests | `dotnet test CrudWorks.slnx` | 166 passing (Domain 37, Application 57, Infrastructure 25, Api 47) |
+| Backend tests | `dotnet test CrudWorks.slnx` | 216 passing (Domain 37, Application 62, Infrastructure 28, Architecture 6, Api 83) |
 | Frontend lint | `npm run lint` (in `frontend/`) | clean (oxlint) |
-| Frontend tests | `npm run test` | 88 passing (11 files) |
+| Frontend tests | `npm run test` | 104 passing (13 files) |
 | Frontend build | `npm run build` | production bundle |
-| API end-to-end | `node docs/qa/e2e-api-check.js` (API running) | 37/37 checks from a clean database |
+| API end-to-end | `node docs/qa/e2e-api-check.js` (API running) | 40/40 checks from a clean database |
 
 Coverage: 100% line coverage on `Domain` + `Application` (floor: 80%);
 `docs/qa/coverage-summary.md` has per-file numbers. Backend tests use
@@ -129,6 +131,8 @@ per-factory temporary SQLite files — no test shares mutable state.
 - No signing key in source: Development uses an ephemeral per-process key with a
   logged warning; any other environment fails fast without `Jwt:SigningKey`.
 - CORS restricted to the configured frontend origin, explicit methods/headers.
+- Every response carries CSP, `X-Content-Type-Options`, `Referrer-Policy`, and
+  frame-ancestors/`X-Frame-Options`; HSTS is added outside Development (SPEC-007).
 - The browser keeps the token in `sessionStorage` for the demo; the XSS
   trade-off and the production cookie alternative are documented in
   `docs/adr/0002-auth-strategy.md`.

@@ -20,7 +20,7 @@ public sealed class TaskServiceTests
     }
 
     [Fact]
-    public async Task ListAsync_DelegatesToTheRepositoryScopedByTheCaller()
+    public async Task ListAsync_DelegatesToTheRepositoryWithTheRequestedPageSize()
     {
         var ownerId = Guid.NewGuid();
         var ownerTasks = new List<TaskItem>
@@ -28,15 +28,67 @@ public sealed class TaskServiceTests
             TaskItem.Create(ownerId, "Second task", null, TaskItemStatus.Todo, null),
             TaskItem.Create(ownerId, "First task", null, TaskItemStatus.Done, null),
         };
-        _taskRepository.ListByOwnerAsync(ownerId, Arg.Any<CancellationToken>())
+        _taskRepository.ListPageAsync(ownerId, null, 10, Arg.Any<CancellationToken>())
             .Returns(ownerTasks);
 
-        var responses = await _taskService.ListAsync(ownerId, CancellationToken.None);
+        var page = await _taskService.ListAsync(ownerId, null, 10, CancellationToken.None);
 
-        Assert.Equal(2, responses.Count);
-        Assert.Equal(["Second task", "First task"], responses.Select(task => task.Title));
-        // The service never queries without an owner id.
-        await _taskRepository.Received(1).ListByOwnerAsync(ownerId, Arg.Any<CancellationToken>());
+        Assert.Equal(2, page.Items.Count);
+        Assert.Null(page.NextCursor);
+        // The service never queries without an owner id and always passes the page size.
+        await _taskRepository.Received(1).ListPageAsync(ownerId, null, 10, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ListAsync_WhenMoreRowsExist_TrimsToTakeAndReturnsTheLastCursor()
+    {
+        var ownerId = Guid.NewGuid();
+        var tasks = Enumerable.Range(1, 11)
+            .Select(index => TaskItem.Create(ownerId, $"Task {index}", null, TaskItemStatus.Todo, null))
+            .ToList();
+        _taskRepository.ListPageAsync(ownerId, null, 10, Arg.Any<CancellationToken>())
+            .Returns(tasks);
+
+        var page = await _taskService.ListAsync(ownerId, null, 10, CancellationToken.None);
+
+        Assert.Equal(10, page.Items.Count);
+        Assert.NotNull(page.NextCursor);
+        Assert.Equal(tasks[9].Id, page.NextCursor!.Id);
+        Assert.Equal(tasks[9].CreatedAtUtc, page.NextCursor.CreatedAtUtc);
+    }
+
+    [Fact]
+    public async Task ListAsync_WhenThePageIsExact_ReturnsNoCursor()
+    {
+        var ownerId = Guid.NewGuid();
+        var tasks = Enumerable.Range(1, 10)
+            .Select(index => TaskItem.Create(ownerId, $"Task {index}", null, TaskItemStatus.Todo, null))
+            .ToList();
+        _taskRepository.ListPageAsync(ownerId, null, 10, Arg.Any<CancellationToken>())
+            .Returns(tasks);
+
+        var page = await _taskService.ListAsync(ownerId, null, 10, CancellationToken.None);
+
+        Assert.Equal(10, page.Items.Count);
+        Assert.Null(page.NextCursor);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(101)]
+    public async Task ListAsync_WithAnOutOfRangeTake_ThrowsValidationWithTheTakeKey(int take)
+    {
+        var exception = await Assert.ThrowsAsync<ValidationException>(() =>
+            _taskService.ListAsync(Guid.NewGuid(), null, take, CancellationToken.None));
+
+        Assert.Equal(["take"], exception.Errors.Keys);
+        Assert.Equal(["Page size must be between 1 and 100."], exception.Errors["take"]);
+        await _taskRepository.DidNotReceive().ListPageAsync(
+            Arg.Any<Guid>(),
+            Arg.Any<TaskPageCursor?>(),
+            Arg.Any<int>(),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]

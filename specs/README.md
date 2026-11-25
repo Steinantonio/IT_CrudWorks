@@ -113,3 +113,4 @@ Keep a spec under ~150 lines. If it needs more, split it.
 | SPEC-005 | OpenAPI-generated frontend types | Implemented | R-09, R-14, R-17, R-27 |
 | SPEC-006 | Frontend resilience (lazy routes and error boundary) | Implemented | R-14, R-15, R-17 |
 | SPEC-007 | Security response headers (CSP, nosniff, referrer, framing, HSTS) | Implemented | R-10, R-27 |
+| SPEC-008 | Task list pagination (keyset cursor, 10/page, cap 100) | Implemented | R-05, R-09, R-16, R-17 |

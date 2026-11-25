@@ -3,16 +3,14 @@ import { BrowserRouter } from 'react-router-dom'
 import { AuthProvider } from './auth/AuthProvider'
 import AppRoutes from './AppRoutes'
 import AppErrorBoundary from './components/AppErrorBoundary'
-import { ApiError } from './lib/api'
+import { shouldRetryQuery } from './lib/queryRetry'
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      // A `401` means the session is gone; retrying would only repeat the
-      // unauthorized call. The auth reaction clears the session and the
-      // router sends the user to `/login`.
-      retry: (failureCount, error) =>
-        !(error instanceof ApiError && error.status === 401) && failureCount < 1,
+      // A `401` means the session is gone, a `400` is a client error, and a
+      // stale cursor is reset by the list instead of retried. See queryRetry.
+      retry: shouldRetryQuery,
       staleTime: 30_000,
     },
   },

@@ -9,8 +9,17 @@ namespace CrudWorks.Application.Tasks;
 /// </summary>
 public interface ITaskRepository
 {
-    /// <summary>All tasks owned by <paramref name="userId"/>, newest first.</summary>
-    Task<IReadOnlyList<TaskItem>> ListByOwnerAsync(Guid userId, CancellationToken cancellationToken);
+    /// <summary>
+    /// At most <paramref name="take"/> + 1 tasks owned by <paramref name="userId"/>,
+    /// ordered by <c>CreatedAtUtc DESC, Id DESC</c> and strictly after
+    /// <paramref name="cursor"/> when one is supplied. The extra row lets the
+    /// service decide whether a next page exists without a count query.
+    /// </summary>
+    Task<IReadOnlyList<TaskItem>> ListPageAsync(
+        Guid userId,
+        TaskPageCursor? cursor,
+        int take,
+        CancellationToken cancellationToken);
 
     /// <summary>The task only when it exists <em>and</em> is owned by <paramref name="userId"/>.</summary>
     Task<TaskItem?> FindAsync(Guid id, Guid userId, CancellationToken cancellationToken);

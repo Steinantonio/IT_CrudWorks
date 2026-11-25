@@ -12,23 +12,27 @@ A requirement is done only when the evidence exists. "It should work" is not evi
   `docs/qa/logs/` (captured command output),
   `docs/reviews/final-review.md` (the final review verdict),
   `docs/ai/000`-`docs/ai/020` (GenAI evidence per slice).
-- **Counts measured on one tree (wave 5, 2026-11-13):** 166 backend tests
-  (Domain 37, Application 57, Infrastructure 25, Api 47), 80 frontend tests,
-  37/37 API-level E2E checks, 6/6 leak-detector self-tests — **289 automated
-  checks, all green**. Domain + Application line coverage 100.00% (floor: 80%).
-  The wave-4 figures (69 frontend tests / 277 checks) remain in the historical
-  sections of `docs/qa/` and are superseded by this measurement.
+- **Counts measured on the current tree (2026-11-25):** 216 backend tests
+  (Domain 37, Application 62, Infrastructure 28, Architecture 6, Api 83),
+  104 frontend tests, 40/40 API-level E2E checks, 6/6 leak-detector self-tests —
+  **366 automated checks, all green**. Domain + Application line coverage was
+  100.00% at the last measured gate (floor: 80%); the pagination slice adds unit
+  tests but was not re-measured for coverage in this wave. Earlier wave figures
+  remain in the historical sections of `docs/qa/` and are superseded by this
+  measurement.
 
 ## Open items
 
-Four items are intentionally unchecked. Each names the owner and what closes it.
+Three items are intentionally unchecked. Each names the owner and what closes
+it. The reviewer gate is closed: the wave-4 final review and the SPEC-008
+follow-up both ended without blockers; the follow-up returned **Approve with
+comments** (nits only, recorded in `docs/ai/037`).
 
 | Item | Why it is open | Owner | Closes when |
 | --- | --- | --- | --- |
 | The repository is initialized with a clean commit history | `AGENTS.md` §12 forbids committing without explicit owner approval, and no git repository exists yet. The red→green history is recorded in `docs/ai/` instead. | Orchestrator (needs explicit approval) | The owner approves `git init` and the commit sequence. |
 | The demo is rehearsed at least twice | The demo script is written (`docs/presentation.md` §2) but has not been timed end to end. | Orchestrator | The owner rehearses the script twice and records the timings. |
 | No browser console warnings during the demo | The console was observed clean in a real Chromium session during the whole demo flow (`docs/ai/015`), but the **rehearsal** itself has not happened yet, so the final check during the live demo is still open. | Orchestrator | The rehearsal happens with the browser console visible and clean. |
-| The reviewer has no open blockers | The final review **has run**: `docs/reviews/final-review.md` returns **Approve with comments**, 0 blockers, 2 majors (both documentation-truth defects, closed in this wave), 6 minors, 5 nits. The orchestrator re-read the closed findings against the corrected artifacts and the verdict is now effectively **Approve**: no behaviour defect, no open blocker, no open major. | Reviewer | Closed by the orchestrator after the documentation-truth fixes and the wave-4 single-tree gate. |
 
 ### Verified but not fully provable here
 
@@ -69,7 +73,7 @@ Four items are intentionally unchecked. Each names the owner and what closes it.
 - [x] At least two tables: `Users` and `Tasks`.
 - [x] `Tasks` has a PK, a FK to `Users`, and at least two business fields.
 - [x] Unique index on normalized email.
-- [x] Index on `Tasks.UserId`; `DueDate` is not indexed at demo scale (documented).
+- [x] Composite index on `Tasks (UserId, CreatedAtUtc, Id)` for keyset pagination; `DueDate` is not indexed at demo scale (documented).
 - [x] Migrations are committed and apply from a clean database.
 - [x] Seed data includes a demo user and at least five tasks with different statuses.
 - [x] Timestamps are stored in UTC.

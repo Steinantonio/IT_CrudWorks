@@ -1,3 +1,4 @@
+using CrudWorks.Api.Pagination;
 using CrudWorks.Application.Common;
 using CrudWorks.Application.Common.Exceptions;
 using CrudWorks.Application.Tasks;
@@ -12,10 +13,21 @@ namespace CrudWorks.Api.Controllers;
 public sealed class TasksController(ITaskService taskService, ICurrentUser currentUser) : ControllerBase
 {
     [HttpGet]
-    [ProducesResponseType<IReadOnlyList<TaskResponse>>(StatusCodes.Status200OK)]
+    [ProducesResponseType<TaskPageResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
-    public async Task<ActionResult<IReadOnlyList<TaskResponse>>> List(CancellationToken cancellationToken) =>
-        Ok(await taskService.ListAsync(RequireUserId(), cancellationToken));
+    public async Task<ActionResult<TaskPageResponse>> List(
+        [FromQuery] string? cursor,
+        CancellationToken cancellationToken,
+        [FromQuery] int take = TaskService.DefaultPageSize)
+    {
+        var pageCursor = cursor is null ? null : TaskCursorCodec.Decode(cursor);
+        var page = await taskService.ListAsync(RequireUserId(), pageCursor, take, cancellationToken);
+
+        return Ok(new TaskPageResponse(
+            page.Items,
+            page.NextCursor is null ? null : TaskCursorCodec.Encode(page.NextCursor)));
+    }
 
     [HttpGet("{id:guid}")]
     [ProducesResponseType<TaskResponse>(StatusCodes.Status200OK)]

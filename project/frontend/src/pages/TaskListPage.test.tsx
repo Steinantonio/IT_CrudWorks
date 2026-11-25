@@ -1,5 +1,5 @@
 import { QueryClient } from '@tanstack/react-query'
-import { fireEvent, screen, within } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { UserEvent } from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
@@ -39,6 +39,10 @@ const tasks: Task[] = [
     updatedAtUtc: '2026-11-10T09:00:00Z',
   },
 ]
+
+function pageOf(items: Task[], nextCursor: string | null = null) {
+  return { items, nextCursor }
+}
 
 function signIn() {
   sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session))
@@ -87,7 +91,7 @@ describe('TaskListPage', () => {
 
   it('renders the task rows with fields and actions in order', async () => {
     signIn()
-    installFetchMock(() => jsonResponse(tasks))
+    installFetchMock(() => jsonResponse(pageOf(tasks)))
 
     renderApp({ entries: ['/'] })
 
@@ -111,7 +115,7 @@ describe('TaskListPage', () => {
 
   it('summarises the loaded tasks by status', async () => {
     signIn()
-    installFetchMock(() => jsonResponse(tasks))
+    installFetchMock(() => jsonResponse(pageOf(tasks)))
 
     renderApp({ entries: ['/'] })
 
@@ -123,9 +127,229 @@ describe('TaskListPage', () => {
     expect(summary).toHaveTextContent(/Done\s*0/)
   })
 
+  it('loads the next page from the cursor and shows the end of the list', async () => {
+    signIn()
+    const thirdTask: Task = {
+      ...tasks[1],
+      id: '1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d',
+      title: 'Third task',
+      createdAtUtc: '2026-11-09T09:00:00Z',
+    }
+    const fetchMock = installFetchMock((url) => {
+      if (url === '/api/tasks') {
+        return jsonResponse(pageOf(tasks, 'cursor-1'))
+      }
+
+      if (url === '/api/tasks?cursor=cursor-1') {
+        return jsonResponse(pageOf([thirdTask]))
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const user = userEvent.setup()
+
+    renderApp({ entries: ['/'] })
+
+    expect(await screen.findByText('Write the proposal')).toBeInTheDocument()
+    expect(screen.getByText('Counts and filters include loaded tasks.')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Load more' }))
+
+    expect(await screen.findByText('Third task')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument()
+    expect(screen.getByText('You have reached the end of the list.')).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledWith('/api/tasks?cursor=cursor-1', expect.anything())
+  })
+
+  it('resets to the first page when the server rejects a cursor', async () => {
+    signIn()
+    let listCalls = 0
+    installFetchMock((url) => {
+      if (url === '/api/tasks') {
+        listCalls += 1
+        return listCalls === 1
+          ? jsonResponse(pageOf(tasks, 'stale-cursor'))
+          : jsonResponse(pageOf(tasks))
+      }
+
+      if (url === '/api/tasks?cursor=stale-cursor') {
+        return jsonResponse({ title: 'Invalid cursor.', status: 400 }, 400)
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const user = userEvent.setup()
+
+    renderApp({ entries: ['/'] })
+
+    expect(await screen.findByText('Write the proposal')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Load more' }))
+
+    await waitFor(() => expect(listCalls).toBe(2))
+
+    expect(screen.getByText('Write the proposal')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument()
+  })
+
+  it('shows an error for a first-page 400 and does not loop', async () => {
+    signIn()
+    let calls = 0
+    installFetchMock(() => {
+      calls += 1
+      return jsonResponse({ title: 'Page size must be between 1 and 100.', status: 400 }, 400)
+    })
+
+    renderApp({ entries: ['/'] })
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Could not load your tasks. Please try again.',
+    )
+    expect(calls).toBe(1)
+  })
+
+  it('disables Load more and announces loading while the next page is in flight', async () => {
+    signIn()
+    let resolveNextPage: (response: Response) => void = () => {}
+    const nextPage = new Promise<Response>((resolve) => {
+      resolveNextPage = resolve
+    })
+    installFetchMock((url) => {
+      if (url === '/api/tasks') {
+        return jsonResponse(pageOf(tasks, 'cursor-1'))
+      }
+
+      if (url === '/api/tasks?cursor=cursor-1') {
+        return nextPage
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const user = userEvent.setup()
+
+    renderApp({ entries: ['/'] })
+    expect(await screen.findByText('Write the proposal')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Load more' }))
+
+    expect(screen.getByRole('button', { name: 'Loading more…' })).toBeDisabled()
+    expect(screen.getByText('Loading more tasks…')).toBeInTheDocument()
+
+    resolveNextPage(jsonResponse(pageOf([{ ...tasks[1], title: 'Third task' }])))
+
+    expect(await screen.findByText('Third task')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument()
+  })
+
+  it('shows a next-page error and retries the same cursor', async () => {
+    signIn()
+    let cursorCalls = 0
+    installFetchMock((url) => {
+      if (url === '/api/tasks') {
+        return jsonResponse(pageOf(tasks, 'cursor-1'))
+      }
+
+      if (url === '/api/tasks?cursor=cursor-1') {
+        cursorCalls += 1
+        if (cursorCalls === 1) {
+          return jsonResponse({ title: 'Server error', status: 500 }, 500)
+        }
+
+        return jsonResponse(pageOf([{ ...tasks[1], title: 'Third task' }]))
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const user = userEvent.setup()
+
+    renderApp({ entries: ['/'] })
+    expect(await screen.findByText('Write the proposal')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Load more' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Could not load your tasks. Please try again.',
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+
+    expect(await screen.findByText('Third task')).toBeInTheDocument()
+    expect(cursorCalls).toBe(2)
+  })
+
+  it('retries a background refetch failure with refetch', async () => {
+    signIn()
+    let listCalls = 0
+    installFetchMock((url, init) => {
+      if (url === '/api/tasks' && !init?.method) {
+        listCalls += 1
+        if (listCalls === 1) {
+          return jsonResponse(pageOf(tasks))
+        }
+
+        if (listCalls === 2) {
+          return jsonResponse({ title: 'Server error', status: 500 }, 500)
+        }
+
+        return jsonResponse(pageOf([tasks[1]]))
+      }
+
+      if (init?.method === 'DELETE') {
+        return new Response(null, { status: 204 })
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const user = userEvent.setup()
+
+    renderApp({ entries: ['/'] })
+    expect(await screen.findByText('Write the proposal')).toBeInTheDocument()
+
+    await user.click(deleteButtonFor('Write the proposal'))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: 'Delete task' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Could not load your tasks. Please try again.',
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+
+    await waitFor(() => expect(listCalls).toBe(3))
+    expect(screen.getByText('Book the review')).toBeInTheDocument()
+    expect(screen.queryByText('Write the proposal')).not.toBeInTheDocument()
+  })
+
+  it('shows an error when the first page fails after a cursor reset', async () => {
+    signIn()
+    let listCalls = 0
+    installFetchMock((url) => {
+      if (url === '/api/tasks') {
+        listCalls += 1
+        return listCalls === 1
+          ? jsonResponse(pageOf(tasks, 'stale-cursor'))
+          : jsonResponse({ title: 'Server error', status: 500 }, 500)
+      }
+
+      if (url === '/api/tasks?cursor=stale-cursor') {
+        return jsonResponse({ title: 'Invalid cursor.', status: 400 }, 400)
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const user = userEvent.setup()
+
+    renderApp({ entries: ['/'] })
+    expect(await screen.findByText('Write the proposal')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Load more' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Could not load your tasks. Please try again.',
+    )
+    expect(listCalls).toBe(2)
+  })
+
   it('marks a past due date as overdue', async () => {
     signIn()
-    installFetchMock(() => jsonResponse([{ ...tasks[0], dueDate: '2020-01-01' }]))
+    installFetchMock(() => jsonResponse(pageOf([{ ...tasks[0], dueDate: '2020-01-01' }])))
 
     renderApp({ entries: ['/'] })
 
@@ -135,7 +359,7 @@ describe('TaskListPage', () => {
   it('does not mark a completed task as overdue', async () => {
     signIn()
     installFetchMock(() =>
-      jsonResponse([{ ...tasks[0], status: 'Done', dueDate: '2020-01-01' }]),
+      jsonResponse(pageOf([{ ...tasks[0], status: 'Done', dueDate: '2020-01-01' }])),
     )
 
     renderApp({ entries: ['/'] })
@@ -146,7 +370,7 @@ describe('TaskListPage', () => {
 
   it('shows the empty state with a create action when there are no tasks', async () => {
     signIn()
-    installFetchMock(() => jsonResponse([]))
+    installFetchMock(() => jsonResponse(pageOf([])))
 
     renderApp({ entries: ['/'] })
 
@@ -167,7 +391,7 @@ describe('TaskListPage', () => {
       }
 
       if (url === '/api/tasks') {
-        return jsonResponse(tasks)
+        return jsonResponse(pageOf(tasks))
       }
 
       throw new Error(`Unexpected request: ${url}`)
@@ -200,7 +424,7 @@ describe('TaskListPage', () => {
 
   it('cancelling the delete confirmation keeps the row and sends no request', async () => {
     signIn()
-    const fetchMock = installFetchMock(() => jsonResponse(tasks))
+    const fetchMock = installFetchMock(() => jsonResponse(pageOf(tasks)))
     const user = userEvent.setup()
 
     renderApp({ entries: ['/'] })
@@ -224,7 +448,7 @@ describe('TaskListPage', () => {
     const remaining = [...tasks]
     installFetchMock((url, init) => {
       if (url === '/api/tasks') {
-        return jsonResponse(remaining)
+        return jsonResponse(pageOf(remaining))
       }
 
       if (init?.method === 'DELETE') {
@@ -253,7 +477,7 @@ describe('TaskListPage', () => {
 
   it('closes the confirmation dialog with Escape without deleting', async () => {
     signIn()
-    const fetchMock = installFetchMock(() => jsonResponse(tasks))
+    const fetchMock = installFetchMock(() => jsonResponse(pageOf(tasks)))
     const user = userEvent.setup()
 
     renderApp({ entries: ['/'] })
@@ -277,7 +501,7 @@ describe('TaskListPage', () => {
     signIn()
     installFetchMock((url, init) => {
       if (url === '/api/tasks') {
-        return jsonResponse(tasks)
+        return jsonResponse(pageOf(tasks))
       }
 
       if (init?.method === 'DELETE') {
@@ -323,7 +547,7 @@ describe('TaskListPage', () => {
 
   it('conveys the task status as text and not only with colour', async () => {
     signIn()
-    installFetchMock(() => jsonResponse(tasks))
+    installFetchMock(() => jsonResponse(pageOf(tasks)))
 
     renderApp({ entries: ['/'] })
 
@@ -339,7 +563,7 @@ describe('TaskListPage', () => {
     signIn()
     installFetchMock((url) => {
       if (url === '/api/tasks') {
-        return jsonResponse(tasks)
+        return jsonResponse(pageOf(tasks))
       }
 
       if (url === `/api/tasks/${tasks[0].id}`) {
@@ -368,7 +592,7 @@ describe('TaskListPage', () => {
     signIn()
     const fetchMock = installFetchMock((url) => {
       if (url === '/api/tasks') {
-        return jsonResponse(tasks)
+        return jsonResponse(pageOf(tasks))
       }
 
       throw new Error(`Unexpected request: ${url}`)
@@ -392,7 +616,7 @@ describe('TaskListPage', () => {
 
   it('returns the focus to the delete trigger when the dialog is dismissed with Escape', async () => {
     signIn()
-    installFetchMock(() => jsonResponse(tasks))
+    installFetchMock(() => jsonResponse(pageOf(tasks)))
     const user = userEvent.setup()
 
     renderApp({ entries: ['/'] })
@@ -413,7 +637,7 @@ describe('TaskListPage', () => {
     const remaining = [...tasks]
     installFetchMock((url, init) => {
       if (url === '/api/tasks') {
-        return jsonResponse(remaining)
+        return jsonResponse(pageOf(remaining))
       }
 
       if (init?.method === 'DELETE') {
@@ -441,7 +665,7 @@ describe('TaskListPage', () => {
 
   it('filters the visible list when a summary card is clicked and clears it on a second click', async () => {
     signIn()
-    installFetchMock(() => jsonResponse(tasks))
+    installFetchMock(() => jsonResponse(pageOf(tasks)))
     const user = userEvent.setup()
 
     renderApp({ entries: ['/'] })
@@ -455,7 +679,7 @@ describe('TaskListPage', () => {
     expect(todoCard).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByText('Book the review')).toBeInTheDocument()
     expect(screen.queryByText('Write the proposal')).not.toBeInTheDocument()
-    // Counts stay computed from the full list while the filter is active.
+    // Counts stay computed from the loaded pages while the filter is active.
     expect(
       within(summary).getByRole('button', { name: 'Filter by In progress (1)' }),
     ).toBeInTheDocument()
@@ -469,7 +693,7 @@ describe('TaskListPage', () => {
 
   it('shows an inline note when the active status filter matches no tasks', async () => {
     signIn()
-    installFetchMock(() => jsonResponse(tasks))
+    installFetchMock(() => jsonResponse(pageOf(tasks)))
     const user = userEvent.setup()
 
     renderApp({ entries: ['/'] })
@@ -496,7 +720,7 @@ describe('TaskListPage', () => {
     const stored = [...tasks]
     const fetchMock = installFetchMock((url, init) => {
       if (url === '/api/tasks') {
-        return jsonResponse(stored)
+        return jsonResponse(pageOf(stored))
       }
 
       if (url === `/api/tasks/${tasks[0].id}` && init?.method === 'PUT') {
@@ -537,7 +761,7 @@ describe('TaskListPage', () => {
     const stored = [...tasks]
     const fetchMock = installFetchMock((url, init) => {
       if (url === '/api/tasks') {
-        return jsonResponse(stored)
+        return jsonResponse(pageOf(stored))
       }
 
       if (url === `/api/tasks/${tasks[0].id}` && init?.method === 'PUT') {
@@ -574,7 +798,7 @@ describe('TaskListPage', () => {
     signIn()
     const fetchMock = installFetchMock((url) => {
       if (url === '/api/tasks') {
-        return jsonResponse(tasks)
+        return jsonResponse(pageOf(tasks))
       }
 
       throw new Error(`Unexpected request: ${url}`)
@@ -602,7 +826,7 @@ describe('TaskListPage', () => {
     signIn()
     const fetchMock = installFetchMock((url) => {
       if (url === '/api/tasks') {
-        return jsonResponse(tasks)
+        return jsonResponse(pageOf(tasks))
       }
 
       throw new Error(`Unexpected request: ${url}`)
@@ -630,7 +854,7 @@ describe('TaskListPage', () => {
 
   it('shows a short ID chip, exposes the full ID and copies it on click', async () => {
     signIn()
-    installFetchMock(() => jsonResponse(tasks))
+    installFetchMock(() => jsonResponse(pageOf(tasks)))
     const user = userEvent.setup()
     // Install the clipboard stub after `userEvent.setup()`: the setup
     // replaces `navigator.clipboard` with its own internal stub.
@@ -661,7 +885,7 @@ describe('TaskListPage', () => {
 
   it('decorates the card meta with inline icons', async () => {
     signIn()
-    installFetchMock(() => jsonResponse(tasks))
+    installFetchMock(() => jsonResponse(pageOf(tasks)))
 
     renderApp({ entries: ['/'] })
     await screen.findByText('Write the proposal')

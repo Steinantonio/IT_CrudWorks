@@ -298,7 +298,10 @@ export interface paths {
         };
         get: {
             parameters: {
-                query?: never;
+                query?: {
+                    cursor?: string;
+                    take?: number;
+                };
                 header?: never;
                 path?: never;
                 cookie?: never;
@@ -311,9 +314,29 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "text/plain": components["schemas"]["TaskResponse"][];
-                        "application/json": components["schemas"]["TaskResponse"][];
-                        "text/json": components["schemas"]["TaskResponse"][];
+                        "text/plain": components["schemas"]["TaskPageResponse"];
+                        "application/json": components["schemas"]["TaskPageResponse"];
+                        "text/json": components["schemas"]["TaskPageResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": {
+                            type?: null | string;
+                            title?: null | string;
+                            /** Format: int32 */
+                            status?: null | number;
+                            detail?: null | string;
+                            instance?: null | string;
+                            traceId?: null | string;
+                            errors?: null | {
+                                [key: string]: string[];
+                            };
+                        };
                     };
                 };
                 /** @description Unauthorized */
@@ -839,6 +862,10 @@ export interface components {
          * @enum {string}
          */
         TaskItemStatus: "Todo" | "InProgress" | "Done";
+        TaskPageResponse: {
+            items: components["schemas"]["TaskResponse"][];
+            nextCursor: null | string;
+        };
         TaskResponse: {
             /** Format: uuid */
             id: string;

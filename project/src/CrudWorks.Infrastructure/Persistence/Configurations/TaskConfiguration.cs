@@ -21,9 +21,10 @@ public sealed class TaskConfiguration : IEntityTypeConfiguration<TaskItem>
             .HasForeignKey(task => task.UserId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // One indexed query per list: filter by UserId, order by CreatedAtUtc.
-        builder.HasIndex(task => task.UserId)
-            .HasDatabaseName("IX_Tasks_UserId");
+        // One indexed range scan per page: filter by UserId, then seek/order by
+        // (CreatedAtUtc, Id). The composite replaces the old UserId-only index.
+        builder.HasIndex(task => new { task.UserId, task.CreatedAtUtc, task.Id })
+            .HasDatabaseName("IX_Tasks_UserId_CreatedAtUtc_Id");
 
         builder.Property(task => task.Title)
             .IsRequired()
