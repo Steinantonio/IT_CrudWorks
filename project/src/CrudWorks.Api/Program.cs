@@ -96,6 +96,10 @@ var spaServing = app.Configuration.GetValue<bool>("Spa:Serving");
 
 app.UseExceptionHandler();
 
+// SPEC-007: CSP, nosniff, referrer policy, framing, and HSTS (outside Development).
+// Registered after the exception handler so error responses carry the headers too.
+app.UseSecurityHeaders();
+
 if (spaServing)
 {
     var spaIndexPath = ResolveSpaIndexPath(app.Environment);

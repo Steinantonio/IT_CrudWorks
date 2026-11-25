@@ -166,6 +166,13 @@ CrudWorks.Api             (composition root — controllers, DI, auth wiring)
 - Secrets: no signing key in source; Development generates an ephemeral key and
   logs a warning; production fails fast without `Jwt__SigningKey`.
 - CORS is restricted to the configured frontend origin.
+- Every response carries `Content-Security-Policy` (`default-src 'self'; script-src
+  'self'; style-src 'self'; img-src 'self' data:; connect-src 'self';
+  frame-ancestors 'none'; base-uri 'self'; form-action 'self'`),
+  `X-Content-Type-Options: nosniff`, `Referrer-Policy:
+  strict-origin-when-cross-origin`, and `X-Frame-Options: DENY`;
+  `Strict-Transport-Security` (`max-age=31536000; includeSubDomains`) is added
+  outside Development (SPEC-007).
 - The browser keeps the token in `sessionStorage` for the demo; the XSS trade-off
   and the production cookie alternative are documented in `docs/adr/0002-auth-strategy.md`.
 
