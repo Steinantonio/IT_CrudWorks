@@ -848,3 +848,24 @@ snapshot the whole user list, so a failure could roll back a concurrent
 description save. The window is narrow (one row, one request) and the next
 refetch reconciles; per-task rollback is the follow-up if this becomes a real
 flow.
+
+## 11. SPEC-010/011 — markdown, dark mode, Tailwind pilot (2026-11-26)
+
+Frontend-only slices: no API, schema, OpenAPI, or migration change.
+
+| Step | Command | Result |
+| --- | --- | --- |
+| Backend build | `dotnet build CrudWorks.slnx --verbosity minimal` | 0 warnings, 0 errors |
+| Backend tests | `dotnet test CrudWorks.slnx --verbosity minimal` | **216 passed, 0 failed** (Domain 37, Application 62, Infrastructure 28, Architecture 6, Api 83) |
+| Frontend lint | `npm run lint` | clean (oxlint) |
+| Frontend tests | `npm run test` | **16 files, 134 tests passed** |
+| Frontend build | `npm run build` | succeeded; CSS 15.38 → 30.55 kB raw (3.91 → 6.73 kB gzip); initial entry 293.42 kB; `TaskListPage` 13.84 → 97.71 kB because `marked` + `dompurify` live in that lazy chunk |
+| Live API E2E | not rerun | no API or contract change |
+| Markdown XSS | `Markdown.test.tsx` | 12/12 (script, onerror/iframe/svg/form, data/aria/class/id/style, `javascript:`, `data:`, `//host`, raw `/\host`, safe GFM, table) |
+| Color mode | `colorMode.test.ts` + `ColorModeToggle.test.tsx` | 7/7 + 2/2 (including blocked storage) |
+
+**Not verified:** no real-browser pass for dark mode or the Tailwind pilot; the
+dark palette and the pilot layout are verified by CSS inspection and component
+tests, not by a visual regression tool. Contrast was chosen by hand, not
+measured. The markdown renderer is covered by unit tests, not by a live XSS
+scanner.

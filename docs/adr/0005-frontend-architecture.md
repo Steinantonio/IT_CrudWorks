@@ -117,3 +117,55 @@ API client; no test hits a real server. Minimum coverage is listed in SPEC-003.
 | Date | Change | Why |
 | --- | --- | --- |
 | 2026-11-16 | §State rewritten to match the delivered code: task keys are `['tasks']` (invalidation prefix), `['tasks', 'list', userId]`, `['tasks', 'detail', id]`; the unused `['me']` key was removed; the `QueryClient` is cleared on login, logout, and `401`. The decision itself (TanStack Query owns server state) is unchanged. | The cache-fix commit `0060cb0` changed cache identity without updating this ADR. The defect was user-reported, not caught by the 88 green frontend tests, because the spec had the same hole — so the ADR must describe what is shipped. Evidence: `project/frontend/src/lib/tasks.ts:26-30`, `project/frontend/src/pages/TaskListPage.tsx:50`, `project/frontend/src/auth/AuthProvider.tsx` (`queryClient?.clear()`), `project/frontend/src/App.tsx` (passes the client). |
+| 2026-11-26 | Added the Tailwind v4 pilot and the dark-mode addendum below. | SPEC-011 / ADR-0005 addendum. |
+
+## Addendum (2026-11-26): Tailwind v4 pilot and dark mode
+
+**Decision.** Adopt Tailwind v4 incrementally, one page at a time, without
+preflight. The hand-written stylesheet stays the source of truth for every page
+that has not been converted.
+
+- `src/tailwind.css` imports only `tailwindcss/theme.css` and
+  `tailwindcss/utilities.css`; preflight is deliberately not imported, so base
+  element styles do not change.
+- `src/index.css` is wrapped in `@layer legacy`, and the layer order is declared
+  as `legacy, theme, base, components, utilities`. Utilities therefore override
+  legacy rules where a converted page uses them; unconverted pages keep their
+  existing cascade.
+- The app's radius and shadow tokens were renamed to `--app-radius-*` and
+  `--app-shadow-*`: Tailwind's theme layer defines `--radius-*` and `--shadow-*`,
+  and without the rename the pilot's `rounded-lg` would have restyled every
+  legacy panel (18px → 8px).
+- The **login page** is the pilot: its form, fields, demo block, submit button,
+  and register link use utilities, including `dark:` variants.
+- `dark:` is a custom variant tied to `[data-color-mode='dark']` on `<html>`, not
+  to the OS media query directly. The app resolves the OS preference once, on
+  boot, when the user has not chosen.
+
+**Dark mode.** The palette is a set of token overrides:
+
+```css
+[data-color-mode='dark'] { color-scheme: dark; --bg: ...; --surface: ...; }
+```
+
+`src/theme/colorMode.ts` reads `localStorage['crudworks-color-mode']`, falls back
+to `prefers-color-scheme`, and applies the attribute. A same-origin
+`public/theme-init.js` (inline scripts are forbidden by the CSP) sets it before
+the stylesheet paints, so a stored dark choice does not flash light; `main.tsx`
+repeats the resolution before React renders. The header switch is a labelled
+button with `aria-pressed`.
+
+**Measured cost (production build).** CSS 15.38 → 30.55 kB raw (3.91 → 6.73 kB
+gzip). The initial JS entry is unchanged at ~293 kB. The `TaskListPage` lazy
+chunk grows because markdown rendering (`marked` + `dompurify`) lives there; that
+cost belongs to ADR-0008, not to Tailwind.
+
+**Consequences.** A future page can opt in by using utilities only; converting
+the rest is a separate decision. Tailwind's theme variables are emitted even for
+unused colors, which is acceptable at this size. Hardcoded status accents in the
+legacy CSS (row borders, due-soon/overdue pills) are not tokenized yet; they
+remain readable in dark mode but are the next cleanup if the pilot is adopted
+further.
+
+**Links.** `specs/011-dark-mode-tailwind/spec.md`, `src/tailwind.css`,
+`src/theme/colorMode.ts`, `src/pages/LoginPage.tsx`.

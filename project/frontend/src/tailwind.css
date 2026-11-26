@@ -1,0 +1,16 @@
+/*
+ * Tailwind v4, introduced as a measured pilot (ADR-0005 addendum).
+ *
+ * Preflight is intentionally not imported: the existing stylesheet still owns
+ * the base element styles. `legacy` is declared first so utilities in the
+ * `utilities` layer can override the hand-written rules on the pages that adopt
+ * them, without changing any page that does not.
+ */
+@layer legacy, theme, base, components, utilities;
+
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+/* `dark:` follows the app's own switch instead of the OS media query, because
+   the switch already resolves the OS preference when the user has not chosen. */
+@custom-variant dark (&:where([data-color-mode='dark'], [data-color-mode='dark'] *));

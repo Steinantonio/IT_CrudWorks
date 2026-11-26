@@ -1,3 +1,5 @@
+@layer legacy {
+
 :root {
   color-scheme: light;
 
@@ -24,12 +26,12 @@
   --warning-soft: #fff4dc;
 
   /* Radius, shadow, spacing */
-  --radius-lg: 18px;
+  --app-radius-lg: 18px;
   --radius: 12px;
-  --radius-sm: 9px;
-  --shadow-sm: 0 1px 2px rgba(21, 33, 45, 0.06);
-  --shadow-md: 0 12px 32px rgba(21, 33, 45, 0.09);
-  --shadow-lg: 0 24px 60px rgba(21, 33, 45, 0.12);
+  --app-radius-sm: 9px;
+  --app-shadow-sm: 0 1px 2px rgba(21, 33, 45, 0.06);
+  --app-shadow-md: 0 12px 32px rgba(21, 33, 45, 0.09);
+  --app-shadow-lg: 0 24px 60px rgba(21, 33, 45, 0.12);
   --space-1: 0.5rem;
   --space-2: 1rem;
   --space-3: 1.5rem;
@@ -43,6 +45,80 @@
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Dark palette (SPEC-011). Every color comes from these tokens, so the whole
+   app follows the switch without per-component rules. */
+[data-color-mode='dark'] {
+  color-scheme: dark;
+
+  --bg: #0b1218;
+  --surface: #121b23;
+  --surface-soft: #16222c;
+  --border: #243341;
+  --border-strong: #35495c;
+  --text: #e8eef4;
+  --muted: #a3b3c2;
+  --accent: #2f9e82;
+  --accent-strong: #37b394;
+  --accent-soft: #12352d;
+  --accent-contrast: #06120f;
+  --danger: #e08a8a;
+  --danger-strong: #f0a0a0;
+  --danger-soft: #3a1e1e;
+  --success: #6fd0b0;
+  --success-soft: #123029;
+  --info: #8ab6ea;
+  --info-soft: #14273d;
+  --warning: #e6c07a;
+  --warning-soft: #33280f;
+  --app-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --app-shadow-md: 0 12px 32px rgba(0, 0, 0, 0.45);
+  --app-shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.55);
+}
+
+/* Status pills and alerts still carry a few literal borders; these overrides
+   keep them consistent in dark mode without tokenizing every legacy rule. */
+[data-color-mode='dark'] .status-todo {
+  background: #1b2833;
+  color: #c3d0dc;
+  border-color: #2c3d4d;
+}
+
+[data-color-mode='dark'] .status-inprogress {
+  border-color: #2b4462;
+}
+
+[data-color-mode='dark'] .status-done,
+[data-color-mode='dark'] .alert-success {
+  border-color: #1f4a3c;
+}
+
+[data-color-mode='dark'] .alert {
+  border-color: #5a2a2a;
+}
+
+/* Inline code chips and the remaining light-only literals on legacy pages. */
+[data-color-mode='dark'] code {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+[data-color-mode='dark'] .task-due-overdue {
+  border-color: #6b3a3a;
+}
+
+[data-color-mode='dark'] .task-due-soon {
+  border-color: #6b5525;
+}
+
+[data-color-mode='dark'] .field input:hover,
+[data-color-mode='dark'] .field select:hover,
+[data-color-mode='dark'] .field textarea:hover {
+  border-color: var(--border-strong);
+}
+
+[data-color-mode='dark'] .button:active:not(:disabled) {
+  background: var(--accent-strong);
 }
 
 * {
@@ -131,10 +207,10 @@ code {
 .panel {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--app-radius-lg);
   padding: clamp(1.25rem, 3vw, 2rem);
   max-width: 40rem;
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--app-shadow-sm);
 }
 
 /* Header */
@@ -146,7 +222,7 @@ code {
   flex: none;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--app-shadow-sm);
 }
 
 .app-header-inner {
@@ -182,10 +258,21 @@ code {
   color: var(--accent-contrast);
   font-size: 0.95rem;
   font-weight: 800;
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--app-shadow-sm);
 }
 
 .brand-name {
+  white-space: nowrap;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.color-mode-toggle {
   white-space: nowrap;
 }
 
@@ -296,8 +383,8 @@ code {
   padding: clamp(1.5rem, 3vw, 2.25rem);
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
+  border-radius: var(--app-radius-lg);
+  box-shadow: var(--app-shadow-lg);
 }
 
 .auth-card h1 {
@@ -309,51 +396,6 @@ code {
   margin: var(--space-2) 0 0;
   color: var(--muted);
   font-size: 0.95rem;
-}
-
-/* Demo credentials block */
-
-.demo-access {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.6rem 0.9rem;
-  padding: 0.75rem 0.9rem;
-  background: var(--accent-soft);
-  border: 1px solid #c5ded5;
-  border-radius: var(--radius-sm);
-}
-
-.demo-access-copy {
-  display: grid;
-  gap: 0.15rem;
-  min-width: 0;
-}
-
-.demo-access-title {
-  margin: 0;
-  color: var(--accent-strong);
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
-.demo-access-credentials {
-  margin: 0;
-  color: var(--text);
-  font-size: 0.85rem;
-  overflow-wrap: anywhere;
-}
-
-.demo-access-credentials code {
-  background: rgba(255, 255, 255, 0.75);
-}
-
-.demo-access-button {
-  padding: 0.35rem 0.75rem;
-  font-size: 0.85rem;
 }
 
 /* Forms */
@@ -380,7 +422,7 @@ code {
   width: 100%;
   padding: 0.6rem 0.75rem;
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
+  border-radius: var(--app-radius-sm);
   background: var(--surface);
   color: var(--text);
   font: inherit;
@@ -448,7 +490,7 @@ code {
   gap: 0.4rem;
   padding: 0.6rem 1.1rem;
   border: 1px solid transparent;
-  border-radius: var(--radius-sm);
+  border-radius: var(--app-radius-sm);
   background: var(--accent);
   color: var(--accent-contrast);
   font: inherit;
@@ -468,7 +510,7 @@ code {
 
 .button:hover:not(:disabled) {
   background: var(--accent-strong);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--app-shadow-sm);
 }
 
 .button:active:not(:disabled) {
@@ -535,7 +577,7 @@ code {
   margin: 0 0 var(--space-2);
   padding: 0.65rem 0.9rem;
   border: 1px solid #e3b8b8;
-  border-radius: var(--radius-sm);
+  border-radius: var(--app-radius-sm);
   background: var(--danger-soft);
   color: var(--danger);
   font-size: 0.92rem;
@@ -596,7 +638,7 @@ code {
   border: 1px solid var(--border);
   border-top: 3px solid var(--border-strong);
   border-radius: var(--radius);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--app-shadow-sm);
   font: inherit;
   text-align: left;
   width: 100%;
@@ -610,7 +652,7 @@ code {
 
 .task-stat[aria-pressed='true'] {
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-soft), var(--shadow-md);
+  box-shadow: 0 0 0 2px var(--accent-soft), var(--app-shadow-md);
 }
 
 .task-stat[aria-pressed='true'] .task-stat-label {
@@ -740,7 +782,7 @@ code {
   width: 100%;
   padding: 0.5rem 0.65rem;
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
+  border-radius: var(--app-radius-sm);
   background: var(--surface);
   color: var(--text);
   font: inherit;
@@ -785,7 +827,7 @@ code {
   border: 1px solid var(--border);
   border-left: 4px solid var(--border-strong);
   border-radius: var(--radius);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--app-shadow-sm);
   transition:
     border-color 0.15s ease,
     box-shadow 0.15s ease;
@@ -800,6 +842,7 @@ code {
 
 .task-actions,
 .task-status-toggle,
+.task-description,
 .task-description-toggle,
 .task-description-editor,
 .task-id-chip,
@@ -810,7 +853,7 @@ code {
 
 .task-row:hover {
   border-color: var(--border-strong);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--app-shadow-md);
 }
 
 .task-row-todo {
@@ -859,6 +902,38 @@ code {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+/* Markdown block children inside the two-line card preview. */
+.task-description h1,
+.task-description h2,
+.task-description h3,
+.task-description h4,
+.task-description h5,
+.task-description h6 {
+  margin: 0.25rem 0;
+  font-size: 1rem;
+  line-height: 1.35;
+}
+
+.task-description p,
+.task-description ul,
+.task-description ol,
+.task-description blockquote {
+  margin: 0.2rem 0;
+}
+
+.task-description ul,
+.task-description ol {
+  padding-left: 1.15rem;
+}
+
+.task-description > :first-child {
+  margin-top: 0;
+}
+
+.task-description > :last-child {
+  margin-bottom: 0;
 }
 
 .task-due {
@@ -965,7 +1040,7 @@ code {
   padding: var(--space-4) var(--space-3);
   background: var(--surface);
   border: 1px dashed var(--border-strong);
-  border-radius: var(--radius-lg);
+  border-radius: var(--app-radius-lg);
   text-align: center;
 }
 
@@ -1001,7 +1076,7 @@ code {
   border: 1px solid var(--border);
   border-left: 4px solid var(--danger);
   border-radius: var(--radius);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--app-shadow-sm);
 }
 
 .error-state-message {
@@ -1027,8 +1102,8 @@ code {
   padding: var(--space-3);
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
+  border-radius: var(--app-radius-lg);
+  box-shadow: var(--app-shadow-lg);
 }
 
 .dialog h2 {
@@ -1168,4 +1243,6 @@ code {
     animation-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
 }

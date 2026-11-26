@@ -1,6 +1,7 @@
 import { Suspense, useEffect, useRef } from 'react'
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/authContext'
+import ColorModeToggle from './ColorModeToggle'
 import RouteLoading from './RouteLoading'
 
 export default function Layout() {
@@ -38,14 +39,17 @@ export default function Layout() {
             <span className="brand-name">CrudWorks</span>
           </Link>
 
-          {isAuthenticated && user && (
-            <div className="session-bar">
-              <span className="session-user">{user.displayName}</span>
-              <button type="button" className="button button-quiet" onClick={handleLogout}>
-                Log out
-              </button>
-            </div>
-          )}
+          <div className="header-actions">
+            <ColorModeToggle />
+            {isAuthenticated && user && (
+              <div className="session-bar">
+                <span className="session-user">{user.displayName}</span>
+                <button type="button" className="button button-quiet" onClick={handleLogout}>
+                  Log out
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 

@@ -4,6 +4,7 @@ import { useAuth } from '../auth/authContext'
 import { taskKeys, updateTask } from '../lib/tasks'
 import type { Task } from '../lib/tasks'
 import { IconDescription } from './icons'
+import Markdown from './Markdown'
 
 const CONNECTION_ERROR = 'Could not reach the server. Check your connection and try again.'
 const SAVE_ERROR = 'Could not save the description. Please try again.'
@@ -127,7 +128,7 @@ export default function TaskDescriptionEditor({
 
   return (
     <>
-      {task.description && <p className="task-description">{task.description}</p>}
+      {task.description && <Markdown className="task-description" text={task.description} />}
       <button
         type="button"
         className="task-description-toggle"

@@ -77,7 +77,7 @@ Backend tests use per-factory temporary SQLite files; no test shares mutable
 state.
 
 Current counts: **216 backend tests** (Domain 37, Application 62,
-Infrastructure 28, Architecture 6, Api 83) and **113 frontend tests** (13 files).
+Infrastructure 28, Architecture 6, Api 83) and **134 frontend tests** (16 files).
 
 ### Coverage
 

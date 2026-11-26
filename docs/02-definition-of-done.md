@@ -12,15 +12,16 @@ A requirement is done only when the evidence exists. "It should work" is not evi
   `docs/qa/logs/` (captured command output),
   `docs/reviews/final-review.md` (the final review verdict),
   `docs/ai/000`-`docs/ai/020` (GenAI evidence per slice).
-- **Counts on the current tree (2026-11-25):** 216 backend tests
+- **Counts on the current tree (2026-11-26):** 216 backend tests
   (Domain 37, Application 62, Infrastructure 28, Architecture 6, Api 83) and
-  113 frontend tests (13 files) were re-run for SPEC-009. The 40/40 API-level E2E
-  checks and 6/6 leak-detector self-tests are carried from the SPEC-008 gate on
-  the same API (not rerun in this frontend-only slice) — **375 automated checks
-  in total**. Domain + Application line coverage was 100.00% at the last measured
-  gate (floor: 80%); the pagination and quick-action slices add unit tests but
-  were not re-measured for coverage. Earlier wave figures remain in the
-  historical sections of `docs/qa/` and are superseded by this measurement.
+  134 frontend tests (16 files) were re-run for SPEC-010/011. The 40/40 API-level
+  E2E checks and 6/6 leak-detector self-tests are carried from the SPEC-008 gate
+  on the same API (not rerun in these frontend-only slices) — **396 automated
+  checks in total**. Domain + Application line coverage was 100.00% at the last
+  measured gate (floor: 80%); the pagination, quick-action, markdown, and theme
+  slices add unit tests but were not re-measured for coverage. Earlier wave
+  figures remain in the historical sections of `docs/qa/` and are superseded by
+  this measurement.
 
 ## Open items
 
@@ -122,7 +123,7 @@ returned **Approve with comments** (no blockers/majors, recorded in
 ## 7. Frontend
 
 - [x] React + TypeScript + Vite app builds with `npm run build`.
-- [x] TypeScript checks with `noUnusedLocals`, `noUnusedParameters`, and no `any`. `strict` mode is **not** enabled in `tsconfig.app.json`; enabling it is a documented follow-up, so no document should claim strict TypeScript.
+- [x] TypeScript `strict` is enabled in `tsconfig.app.json` and `tsconfig.node.json`; no `any`.
 - [x] Login/register, task list, create, edit, and delete flows work.
 - [x] Loading, empty, error, and success states exist.
 - [x] Forms have labels, inline validation, and keyboard support.
