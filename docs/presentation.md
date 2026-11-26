@@ -35,12 +35,15 @@ Run from a clean database. Show, in this order:
    The clean run shows 5 seeded tasks, newest first, with the status badge
    (`2 Todo / 2 InProgress / 1 Done`). The list pages with a cursor
    (`take`/`cursor`); the 5 seeded tasks fit one page, and the E2E checks
-   exercise 2/2/1 pages.
+   exercise 2/2/1 pages. Click anywhere on a card to open its editor, tick the
+   **Done** box for an instant optimistic status change, and point at the
+   **Due soon** badge on a near deadline.
 5. **Create** — title, description, status, due date; validation messages appear
    inline; the new task is visible immediately.
 6. **Edit** — change title and status; show that `createdAtUtc` stays and
    `updatedAtUtc` changes.
-7. **Delete** — confirmation dialog; cancel once, then confirm; the row disappears.
+7. **Delete** — confirmation dialog; cancel once, then confirm; the row disappears
+   before the server answers and returns if the request fails.
 8. **Ownership** — with a second user, request the first user's task id; show the
    `404`. The API never confirms that the resource exists.
 9. **Logged out** — reload a protected route; redirect to `/login`.
@@ -94,14 +97,16 @@ Then show the project references and note that Domain has no framework packages.
     `Location`, IDOR.
   - Frontend: Vitest + RTL with `fetch` mocked at the boundary; guard, forms,
     session expiry, 401 seam.
-- Real counts, measured back to back on the current tree: **216 backend tests**
+- Real counts on the current tree: **216 backend tests**
   (Domain 37, Application 62, Infrastructure 28, Architecture 6, Api 83),
-  **104 frontend tests** (13 files), **40/40 API-level end-to-end checks** against
+  **113 frontend tests** (13 files), **40/40 API-level end-to-end checks** against
   a freshly seeded database, and **6/6** self-tests of the IDOR leak detector —
-  **366 automated checks, all green**. 0 warnings with `-warnaserror`. Last
+  **375 automated checks**. The backend and frontend suites were re-run for
+  SPEC-009; the E2E and self-test are carried from the SPEC-008 gate (the API is
+  unchanged in that frontend-only slice). 0 warnings with `-warnaserror`. Last
   measured line coverage on Domain + Application: **100%** (Domain 112/112,
-  Application 236/236) against an 80% floor; the pagination slice adds tests but
-  was not re-measured for coverage in this wave.
+  Application 236/236) against an 80% floor; the pagination and quick-action
+  slices add tests but were not re-measured for coverage in those waves.
 - The 216 backend tests include the six architecture-policy tests, eleven OpenAPI
   contract tests, seven security-header tests, and the pagination suite. The 40
   E2E checks ran twice on the same database and restored the seeded baseline both
@@ -109,7 +114,8 @@ Then show the project references and note that Domain has no framework packages.
 - What is not tested: visual regressions, load, real email delivery (out of scope),
   screen readers (no assistive technology available), and the automated
   axe/Lighthouse audit. The browser console was observed clean in a real
-  Chromium session during the whole demo flow.
+  Chromium session during the whole demo flow **before** the SPEC-009 card
+  changes; the new card has component tests and CSS inspection only.
 
 ## 6. SDD and AI-DLS (2 min)
 
@@ -132,8 +138,8 @@ Be specific; do not say "the AI wrote it".
   rules, and the exact evidence required.
 - **Output:** Domain/Application/Infrastructure/API code and tests; React auth
   module, pages, and tests.
-- **Validated:** build with warnings as errors, **366 automated checks** (216
-  backend + 104 frontend + 40 live API + 6 self-test), a real-browser keyboard
+- **Validated:** build with warnings as errors, **375 automated checks** (216
+  backend + 113 frontend + 40 live API + 6 self-test), a real-browser keyboard
   walkthrough against the live API, and independent reviews against the contract
   and the pagination ADR.
 - **Corrected (real examples):**

@@ -5,6 +5,7 @@ import type { UserEvent } from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { SESSION_STORAGE_KEY } from '../auth/session'
 import type { Session } from '../auth/session'
+import { taskKeys } from '../lib/tasks'
 import type { Task } from '../lib/tasks'
 import { installFetchMock, jsonResponse } from '../test/http'
 import { renderApp } from '../test/renderApp'
@@ -234,7 +235,7 @@ describe('TaskListPage', () => {
     expect(screen.getByRole('button', { name: 'Loading more…' })).toBeDisabled()
     expect(screen.getByText('Loading more tasks…')).toBeInTheDocument()
 
-    resolveNextPage(jsonResponse(pageOf([{ ...tasks[1], title: 'Third task' }])))
+    resolveNextPage(jsonResponse(pageOf([{ ...tasks[1], id: '1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d', title: 'Third task' }])))
 
     expect(await screen.findByText('Third task')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument()
@@ -254,7 +255,7 @@ describe('TaskListPage', () => {
           return jsonResponse({ title: 'Server error', status: 500 }, 500)
         }
 
-        return jsonResponse(pageOf([{ ...tasks[1], title: 'Third task' }]))
+        return jsonResponse(pageOf([{ ...tasks[1], id: '1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d', title: 'Third task' }]))
       }
 
       throw new Error(`Unexpected request: ${url}`)
@@ -661,6 +662,10 @@ describe('TaskListPage', () => {
 
     await screen.findByText('Book the review')
     expect(screen.getByRole('heading', { name: 'Tasks' })).toHaveFocus()
+    expect(await screen.findByText('“Write the proposal” deleted.')).toHaveAttribute(
+      'role',
+      'status',
+    )
   })
 
   it('filters the visible list when a summary card is clicked and clears it on a second click', async () => {
@@ -899,5 +904,381 @@ describe('TaskListPage', () => {
     }
     expect(row.querySelector('.task-icon-title')).not.toBeNull()
     expect(within(row).getByText(/^(Due|Overdue ·) Nov 14, 2026$/)).toBeInTheDocument()
+  })
+})
+
+/** A local calendar date offset from today, formatted as the API's `YYYY-MM-DD`. */
+function isoDateOffset(days: number): string {
+  const date = new Date()
+  date.setDate(date.getDate() + days)
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${date.getFullYear()}-${month}-${day}`
+}
+
+function statusToggleFor(title: string): HTMLInputElement {
+  return within(rowFor(title)).getByRole('checkbox') as HTMLInputElement
+}
+
+describe('TaskListPage card quick actions', () => {
+  it('navigates to the edit page from the card overlay, hidden from keyboard and AT', async () => {
+    signIn()
+    installFetchMock((url) => {
+      if (url === '/api/tasks') {
+        return jsonResponse(pageOf(tasks))
+      }
+
+      if (url === `/api/tasks/${tasks[0].id}`) {
+        return jsonResponse(tasks[0])
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+
+    renderApp({ entries: ['/'] })
+    await screen.findByText('Write the proposal')
+    const user = userEvent.setup()
+
+    const overlay = rowFor('Write the proposal').querySelector('.task-card-overlay')
+    expect(overlay).not.toBeNull()
+    expect(overlay).toHaveAttribute('href', `/tasks/${tasks[0].id}/edit`)
+    expect(overlay).toHaveAttribute('aria-hidden', 'true')
+    expect(overlay).toHaveAttribute('tabindex', '-1')
+
+    // Tabbing through the page never lands on the hidden overlay.
+    expect(await tabTo(user, overlay as HTMLElement, 12)).toBe(false)
+
+    fireEvent.click(overlay as HTMLElement)
+
+    expect(await screen.findByRole('heading', { name: 'Edit task' })).toBeInTheDocument()
+  })
+
+  it('keeps the controls inside the card from navigating', async () => {
+    signIn()
+    installFetchMock((url, init) => {
+      if (url === '/api/tasks') {
+        return jsonResponse(pageOf(tasks))
+      }
+
+      if (url === `/api/tasks/${tasks[0].id}` && init?.method === 'PUT') {
+        return jsonResponse({ ...tasks[0], ...(JSON.parse(String(init.body)) as Partial<Task>) })
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const user = userEvent.setup()
+
+    renderApp({ entries: ['/'] })
+    await screen.findByText('Write the proposal')
+
+    const row = rowFor('Write the proposal')
+    await user.click(statusToggleFor('Write the proposal'))
+    expect(screen.getByRole('heading', { name: 'Tasks' })).toBeInTheDocument()
+
+    await user.click(within(row).getByRole('button', { name: 'Edit description' }))
+    expect(within(row).getByLabelText('Description')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Edit task' })).not.toBeInTheDocument()
+
+    await user.click(within(row).getByRole('button', { name: /^Copy task ID/ }))
+    expect(screen.getByRole('heading', { name: 'Tasks' })).toBeInTheDocument()
+
+    await user.click(deleteButtonFor('Write the proposal'))
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Edit task' })).not.toBeInTheDocument()
+  })
+
+  it('sends the full PUT with Done and Todo when the box is checked and unchecked', async () => {
+    signIn()
+    const stored = [...tasks]
+    const fetchMock = installFetchMock((url, init) => {
+      if (url === '/api/tasks') {
+        return jsonResponse(pageOf(stored))
+      }
+
+      if (url === `/api/tasks/${tasks[0].id}` && init?.method === 'PUT') {
+        const body = JSON.parse(String(init.body)) as Partial<Task>
+        stored[0] = { ...tasks[0], ...body }
+        return jsonResponse(stored[0])
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const user = userEvent.setup()
+
+    renderApp({ entries: ['/'] })
+    await screen.findByText('Write the proposal')
+
+    const toggle = statusToggleFor('Write the proposal')
+    expect(toggle).not.toBeChecked()
+
+    await user.click(toggle)
+    await waitFor(() => expect(toggle).not.toBeDisabled())
+    expect(toggle).toBeChecked()
+
+    // The status badge reflects the new status and the list refetches.
+    expect(
+      within(rowFor('Write the proposal')).getByText('Done', { selector: '.status-badge' }),
+    ).toBeInTheDocument()
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.filter(([url, init]) => url === '/api/tasks' && !init?.method),
+      ).toHaveLength(2),
+    )
+
+    await user.click(toggle)
+    await waitFor(() => expect(toggle).not.toBeDisabled())
+    expect(toggle).not.toBeChecked()
+
+    const putBodies = fetchMock.mock.calls
+      .filter(([, init]) => init?.method === 'PUT')
+      .map(([, init]) => JSON.parse(String(init?.body)))
+    expect(putBodies).toHaveLength(2)
+    expect(putBodies[0]).toEqual({
+      title: 'Write the proposal',
+      description: 'Draft and review the proposal.',
+      status: 'Done',
+      dueDate: '2026-11-14',
+    })
+    expect(putBodies[1]).toEqual({
+      title: 'Write the proposal',
+      description: 'Draft and review the proposal.',
+      status: 'Todo',
+      dueDate: '2026-11-14',
+    })
+  })
+
+  it('applies the status toggle optimistically and rolls it back on failure', async () => {
+    signIn()
+    let resolvePut: (response: Response) => void = () => {}
+    const putResponse = new Promise<Response>((resolve) => {
+      resolvePut = resolve
+    })
+    const fetchMock = installFetchMock((url, init) => {
+      if (url === '/api/tasks') {
+        return jsonResponse(pageOf(tasks))
+      }
+
+      if (url === `/api/tasks/${tasks[0].id}` && init?.method === 'PUT') {
+        return putResponse
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const user = userEvent.setup()
+
+    renderApp({ entries: ['/'] })
+    await screen.findByText('Write the proposal')
+
+    const toggle = statusToggleFor('Write the proposal')
+    await user.click(toggle)
+
+    // Optimistic: the checkbox flips before the server answers.
+    await waitFor(() => expect(toggle).toBeChecked())
+    // It stays enabled so the keyboard focus is not dropped mid-request.
+    expect(toggle).not.toBeDisabled()
+    expect(
+      within(rowFor('Write the proposal')).getByText('Done', { selector: '.status-badge' }),
+    ).toBeInTheDocument()
+    // Other rows are locked so only one toggle is ever in flight.
+    expect(statusToggleFor('Book the review')).toBeDisabled()
+    fireEvent.click(toggle)
+    expect(
+      within(screen.getByRole('group', { name: 'Task summary' })).getByRole('button', {
+        name: 'Filter by Done (1)',
+      }),
+    ).toBeInTheDocument()
+
+    resolvePut(jsonResponse({ title: 'Server error', status: 500 }, 500))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Could not update the task status. Please try again.',
+    )
+    await waitFor(() => expect(toggle).not.toBeChecked())
+    expect(fetchMock.mock.calls.filter(([, init]) => init?.method === 'PUT')).toHaveLength(1)
+  })
+
+  it('moves focus to the heading when a filtered row leaves the filter', async () => {
+    signIn()
+    const stored = [...tasks]
+    installFetchMock((url, init) => {
+      if (url === '/api/tasks') {
+        return jsonResponse(pageOf(stored))
+      }
+
+      if (url === `/api/tasks/${tasks[0].id}` && init?.method === 'PUT') {
+        const body = JSON.parse(String(init.body)) as Partial<Task>
+        stored[0] = { ...tasks[0], ...body }
+        return jsonResponse(stored[0])
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const user = userEvent.setup()
+
+    renderApp({ entries: ['/'] })
+    await screen.findByText('Write the proposal')
+
+    await user.click(
+      within(screen.getByRole('group', { name: 'Task summary' })).getByRole('button', {
+        name: 'Filter by In progress (1)',
+      }),
+    )
+    expect(screen.queryByText('Book the review')).not.toBeInTheDocument()
+
+    await user.click(statusToggleFor('Write the proposal'))
+
+    expect(await screen.findByText('No tasks with this status.')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Tasks' })).toHaveFocus())
+  })
+
+  it('removes the row optimistically on delete and restores it on failure', async () => {
+    signIn()
+    let resolveDelete: (response: Response) => void = () => {}
+    const deleteResponse = new Promise<Response>((resolve) => {
+      resolveDelete = resolve
+    })
+    installFetchMock((url, init) => {
+      if (url === '/api/tasks') {
+        return jsonResponse(pageOf(tasks))
+      }
+
+      if (url === `/api/tasks/${tasks[0].id}` && init?.method === 'DELETE') {
+        return deleteResponse
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const user = userEvent.setup()
+
+    renderApp({ entries: ['/'] })
+    await screen.findByText('Write the proposal')
+
+    await user.click(deleteButtonFor('Write the proposal'))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: 'Delete task' }))
+
+    // Optimistic: the row disappears while the dialog waits for the server.
+    await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(1))
+    expect(screen.queryByText('Write the proposal')).not.toBeInTheDocument()
+
+    resolveDelete(jsonResponse({ title: 'Server error', status: 500 }, 500))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Could not delete the task. Please try again.',
+    )
+    await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(2))
+    expect(screen.getByText('Write the proposal')).toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    // The dialog's trigger was detached by the optimistic removal, so focus
+    // falls back to the list heading instead of <body>.
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Tasks' })).toHaveFocus())
+  })
+
+  it('shows Due soon only for open tasks due within two days', async () => {
+    signIn()
+    const soon = isoDateOffset(1)
+    const yesterday = isoDateOffset(-1)
+    const dueTasks: Task[] = [
+      { ...tasks[1], id: '11111111-1111-4111-8111-111111111111', title: 'Soon task', dueDate: soon },
+      {
+        ...tasks[1],
+        id: '22222222-2222-4222-8222-222222222222',
+        title: 'Done soon task',
+        status: 'Done',
+        dueDate: soon,
+      },
+      {
+        ...tasks[1],
+        id: '33333333-3333-4333-8333-333333333333',
+        title: 'Done overdue task',
+        status: 'Done',
+        dueDate: yesterday,
+      },
+      {
+        ...tasks[1],
+        id: '44444444-4444-4444-8444-444444444444',
+        title: 'Late task',
+        dueDate: yesterday,
+      },
+    ]
+    installFetchMock(() => jsonResponse(pageOf(dueTasks)))
+
+    renderApp({ entries: ['/'] })
+    await screen.findByText('Soon task')
+
+    expect(within(rowFor('Soon task')).getByText('Due soon')).toBeInTheDocument()
+    expect(within(rowFor('Done soon task')).queryByText('Due soon')).not.toBeInTheDocument()
+    expect(within(rowFor('Done overdue task')).queryByText(/Overdue/)).not.toBeInTheDocument()
+    expect(within(rowFor('Late task')).getByText(/^Overdue · /)).toBeInTheDocument()
+  })
+
+  it('announces the status change in a polite live region', async () => {
+    signIn()
+    const stored = [...tasks]
+    installFetchMock((url, init) => {
+      if (url === '/api/tasks') {
+        return jsonResponse(pageOf(stored))
+      }
+
+      if (url === `/api/tasks/${tasks[0].id}` && init?.method === 'PUT') {
+        const body = JSON.parse(String(init.body)) as Partial<Task>
+        stored[0] = { ...tasks[0], ...body }
+        return jsonResponse(stored[0])
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const user = userEvent.setup()
+
+    renderApp({ entries: ['/'] })
+    await screen.findByText('Write the proposal')
+
+    await user.click(statusToggleFor('Write the proposal'))
+
+    const message = await screen.findByText(/“Write the proposal” marked as done\./)
+    expect(message).toHaveAttribute('role', 'status')
+  })
+
+  it('patches only the signed-in user cache', async () => {
+    signIn()
+    const stored = [...tasks]
+    installFetchMock((url, init) => {
+      if (url === '/api/tasks') {
+        return jsonResponse(pageOf(stored))
+      }
+
+      if (url === `/api/tasks/${tasks[0].id}` && init?.method === 'PUT') {
+        const body = JSON.parse(String(init.body)) as Partial<Task>
+        stored[0] = { ...tasks[0], ...body }
+        return jsonResponse(stored[0])
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, gcTime: Infinity },
+        mutations: { retry: false },
+      },
+    })
+    const otherKey = taskKeys.list('other-user-id')
+    const otherData = { pages: [pageOf(tasks)], pageParams: [undefined] }
+    // Independent deep copy taken before the mutation: an in-place mutation of
+    // the cached object would fail this comparison.
+    const otherBaseline = structuredClone(otherData)
+    queryClient.setQueryData(otherKey, otherData)
+    const user = userEvent.setup()
+
+    renderApp({ entries: ['/'], queryClient })
+    await screen.findByText('Write the proposal')
+
+    await user.click(statusToggleFor('Write the proposal'))
+    await screen.findByText(/marked as done\./)
+
+    expect(queryClient.getQueryData(otherKey)).toEqual(otherBaseline)
+    const current = queryClient.getQueryData<{ pages: { items: Task[] }[] }>(
+      taskKeys.list(session.user.id),
+    )
+    expect(current?.pages[0].items[0].status).toBe('Done')
   })
 })

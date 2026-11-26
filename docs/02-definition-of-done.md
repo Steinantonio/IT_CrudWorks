@@ -12,27 +12,31 @@ A requirement is done only when the evidence exists. "It should work" is not evi
   `docs/qa/logs/` (captured command output),
   `docs/reviews/final-review.md` (the final review verdict),
   `docs/ai/000`-`docs/ai/020` (GenAI evidence per slice).
-- **Counts measured on the current tree (2026-11-25):** 216 backend tests
-  (Domain 37, Application 62, Infrastructure 28, Architecture 6, Api 83),
-  104 frontend tests, 40/40 API-level E2E checks, 6/6 leak-detector self-tests —
-  **366 automated checks, all green**. Domain + Application line coverage was
-  100.00% at the last measured gate (floor: 80%); the pagination slice adds unit
-  tests but was not re-measured for coverage in this wave. Earlier wave figures
-  remain in the historical sections of `docs/qa/` and are superseded by this
-  measurement.
+- **Counts on the current tree (2026-11-25):** 216 backend tests
+  (Domain 37, Application 62, Infrastructure 28, Architecture 6, Api 83) and
+  113 frontend tests (13 files) were re-run for SPEC-009. The 40/40 API-level E2E
+  checks and 6/6 leak-detector self-tests are carried from the SPEC-008 gate on
+  the same API (not rerun in this frontend-only slice) — **375 automated checks
+  in total**. Domain + Application line coverage was 100.00% at the last measured
+  gate (floor: 80%); the pagination and quick-action slices add unit tests but
+  were not re-measured for coverage. Earlier wave figures remain in the
+  historical sections of `docs/qa/` and are superseded by this measurement.
 
 ## Open items
 
 Three items are intentionally unchecked. Each names the owner and what closes
-it. The reviewer gate is closed: the wave-4 final review and the SPEC-008
-follow-up both ended without blockers; the follow-up returned **Approve with
-comments** (nits only, recorded in `docs/ai/037`).
+it. The wave-4 final review and the SPEC-008 follow-up both ended without
+blockers; the SPEC-008 follow-up returned **Approve with comments** (nits only,
+recorded in `docs/ai/037`). The SPEC-009 review requested changes (one Major on
+keyboard focus plus test gaps); the fixes were applied and the follow-up
+returned **Approve with comments** (no blockers/majors, recorded in
+`docs/ai/038`).
 
 | Item | Why it is open | Owner | Closes when |
 | --- | --- | --- | --- |
 | The repository is initialized with a clean commit history | `AGENTS.md` §12 forbids committing without explicit owner approval, and no git repository exists yet. The red→green history is recorded in `docs/ai/` instead. | Orchestrator (needs explicit approval) | The owner approves `git init` and the commit sequence. |
 | The demo is rehearsed at least twice | The demo script is written (`docs/presentation.md` §2) but has not been timed end to end. | Orchestrator | The owner rehearses the script twice and records the timings. |
-| No browser console warnings during the demo | The console was observed clean in a real Chromium session during the whole demo flow (`docs/ai/015`), but the **rehearsal** itself has not happened yet, so the final check during the live demo is still open. | Orchestrator | The rehearsal happens with the browser console visible and clean. |
+| No browser console warnings during the demo | The console was observed clean in a real Chromium session during the whole demo flow (`docs/ai/015`) **before** the SPEC-009 card changes; the new card has component tests and CSS inspection only, not a browser pass. The **rehearsal** itself has not happened yet, so the final check during the live demo is still open. | Orchestrator | The rehearsal happens with the browser console visible and clean. |
 
 ### Verified but not fully provable here
 
@@ -118,7 +122,7 @@ comments** (nits only, recorded in `docs/ai/037`).
 ## 7. Frontend
 
 - [x] React + TypeScript + Vite app builds with `npm run build`.
-- [x] TypeScript is strict; no `any`.
+- [x] TypeScript checks with `noUnusedLocals`, `noUnusedParameters`, and no `any`. `strict` mode is **not** enabled in `tsconfig.app.json`; enabling it is a documented follow-up, so no document should claim strict TypeScript.
 - [x] Login/register, task list, create, edit, and delete flows work.
 - [x] Loading, empty, error, and success states exist.
 - [x] Forms have labels, inline validation, and keyboard support.

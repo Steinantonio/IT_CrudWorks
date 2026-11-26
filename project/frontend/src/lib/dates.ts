@@ -3,6 +3,8 @@ export interface DueDateFormat {
   date: string
   /** True when the date is before the start of the current day. */
   overdue: boolean
+  /** True from today through today + 2 days, inclusive. */
+  dueSoon: boolean
 }
 
 const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/
@@ -47,9 +49,12 @@ export function formatDueDate(value: string, today: Date = new Date()): DueDateF
   }
 
   const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+  const dueSoonLimit = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 2)
+  const overdue = date.getTime() < todayStart.getTime()
 
   return {
     date: dueDateFormatter.format(date),
-    overdue: date.getTime() < todayStart.getTime(),
+    overdue,
+    dueSoon: !overdue && date.getTime() <= dueSoonLimit.getTime(),
   }
 }

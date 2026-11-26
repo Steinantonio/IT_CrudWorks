@@ -113,7 +113,7 @@ of 100, and `cursor` is the opaque `nextCursor` from the previous page.
 | Backend build | `dotnet build CrudWorks.slnx -warnaserror` | 0 warnings, 0 errors |
 | Backend tests | `dotnet test CrudWorks.slnx` | 216 passing (Domain 37, Application 62, Infrastructure 28, Architecture 6, Api 83) |
 | Frontend lint | `npm run lint` (in `frontend/`) | clean (oxlint) |
-| Frontend tests | `npm run test` | 104 passing (13 files) |
+| Frontend tests | `npm run test` | 113 passing (13 files) |
 | Frontend build | `npm run build` | production bundle |
 | API end-to-end | `node docs/qa/e2e-api-check.js` (API running) | 40/40 checks from a clean database |
 

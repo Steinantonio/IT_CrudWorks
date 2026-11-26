@@ -813,3 +813,38 @@ cleanup inspected the run's database.
 The 37/37 figures in the earlier sections are historical wave-4/5 evidence; the
 current gate is **40/40**. The E2E script now reads the `{items,nextCursor}`
 envelope and includes A5–A7 for the first, cursor, and final pages.
+
+## 10. SPEC-009 task card quick actions (2026-11-25)
+
+Frontend-only slice: no API, schema, OpenAPI, or migration change, so the backend
+suite and the live E2E are expected to stay at their SPEC-008 numbers.
+
+| Step | Command | Result |
+| --- | --- | --- |
+| Backend build | `dotnet build CrudWorks.slnx --verbosity minimal` | 0 warnings, 0 errors |
+| Backend tests | `dotnet test CrudWorks.slnx --verbosity minimal` | **216 passed, 0 failed** (Domain 37, Application 62, Infrastructure 28, Architecture 6, Api 83) |
+| Frontend lint | `npm run lint` | clean (oxlint) |
+| Frontend tests | `npm run test` | **13 files, 113 tests passed** (104 + 9 quick-action tests) |
+| Frontend build | `npm run build` | succeeded; `TaskListPage` chunk 11.76 → 13.84 kB |
+| Live API E2E | not rerun | no API or contract change in this slice |
+
+The nine new component tests map to SPEC-009: overlay navigation and hidden
+from AT; controls do not navigate; full `PUT` with `Done`/`Todo`; optimistic
+toggle with rollback (including the serialization of a second toggle); optimistic
+delete with rollback; due-soon vs overdue vs Done; polite live-region
+announcement; cache patches scoped to the signed-in user; and focus moving to the
+heading when a filtered row leaves the active filter.
+
+**Not verified in this slice:** jsdom does not model CSS stacking, so the
+control-over-overlay `z-index` is verified by CSS inspection, not by a browser
+test; there is no real-browser pass for the new card. The Done checkbox keeps
+focus because it is not disabled while its request is in flight (asserted in the
+component test); the delete flow moves focus to the heading after the refetch
+settles on success and after the dialog unmounts on failure (both asserted).
+
+**Accepted risk:** toggles are serialized against each other, but a delete or a
+description save can still be in flight at the same time. Both delete and toggle
+snapshot the whole user list, so a failure could roll back a concurrent
+description save. The window is narrow (one row, one request) and the next
+refetch reconciles; per-task rollback is the follow-up if this becomes a real
+flow.

@@ -19,6 +19,8 @@ export type TaskUpdateInput = components['schemas']['UpdateTaskRequest']
 
 export const taskKeys = {
   all: ['tasks'] as const,
+  /** Matches every page/generation of one user's list, and nothing else. */
+  listRoot: (userId: string) => ['tasks', 'list', userId] as const,
   list: (userId: string, generation = 0) =>
     ['tasks', 'list', userId, generation] as const,
   detail: (id: string) => ['tasks', 'detail', id] as const,

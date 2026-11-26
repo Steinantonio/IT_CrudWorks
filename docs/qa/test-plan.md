@@ -26,14 +26,20 @@
   self-test = 289 checks, all green**; the auth screens and the task screens were
   measured at 360/768/1280 with no horizontal overflow and a clean console
   (`docs/ai/020`).
-  **SPEC-008 pagination gate (2026-11-25)** is the current release measurement: keyset pagination
-  (ADR-0006 / SPEC-008). The gate was re-run — **216 backend + 104 frontend
-  (13 files) + 40 live API + 6 self-test = 366 checks, all green**; the E2E ran
-  twice on the same database and restored the seeded baseline both times; the
-  10,000-row smoke recorded p95 2.00/4.33 ms with the composite index in the
-  query plan (`docs/qa/clean-run-report.md` §9). Figures are reported per wave
-  wherever they differ, and the SPEC-008 figures are the **current release
-  numbers** (§"Test-count drift").
+  **SPEC-008 pagination gate (2026-11-25)** re-ran the whole gate — **216 backend +
+  104 frontend (13 files) + 40 live API + 6 self-test = 366 checks, all green**;
+  the E2E ran twice on the same database and restored the seeded baseline both
+  times; the 10,000-row smoke recorded p95 2.00/4.33 ms with the composite index
+  in the query plan (`docs/qa/clean-run-report.md` §9).
+  **SPEC-009 task card quick actions (2026-11-25)** is the current release
+  measurement: frontend-only, no API/schema change. **216 backend + 113 frontend
+  (13 files) + 40 live API + 6 self-test = 375 checks, all green**; the frontend
+  suite grew from 104 to 113 with the overlay, toggle, optimistic rollback,
+  due-soon, live-region, cache-scope, and focus tests (`docs/qa/clean-run-report.md`
+  §10). The E2E and self-test were not rerun in this frontend-only slice; the
+  40/40 and 6/6 figures are carried from the SPEC-008 gate on the same API. Figures are reported per wave wherever they
+  differ, and the SPEC-009 figures are the **current release numbers**
+  (§"Test-count drift").
 - **Scope:** the whole exercise — backend (Domain, Application, Infrastructure, Api), the React client, and the API-level end-to-end flow.
 - **Oracle:** `docs/00-brief.md` (R-01…R-30), `specs/001-auth/spec.md`, `specs/002-task-crud/spec.md`, `specs/003-web-client/spec.md` (AC-001-01…AC-003-10), `docs/adr/0004-api-contract.md`, `docs/02-definition-of-done.md` §6.
 - **Evidence sources:** `docs/qa/clean-run-report.md` (wave-1 clean run and the
@@ -213,7 +219,7 @@ manual check that the automation cannot replace.
 | R-24 | Answer code-review questions | Manual | Mock review against the Q&A sheet | `docs/presentation.md` §9 | Manual |
 | R-25 | Clean Architecture criterion (four projects, dependency rule, no framework types in the core) | Manual | Reviewer checklist | `docs/adr/0001`; `docs/reviews/review-task-slice.md` | Manual |
 | R-26 | Testing and TDD criterion (pyramid, red→green→refactor, coverage report) | Automated (coverage, pyramid) + Manual (red→green history) | `dotnet test CrudWorks.slnx --collect:"XPlat Code Coverage"` + `coverage-report.js --verify --write`; red/green records | `docs/qa/coverage-summary.md`; `docs/ai/003`, `007`, `011`, `013` (see note) | Automated + Manual |
-| R-27 | Code quality criterion (warnings as errors, nullable, async, no `any`) | Gate + Manual | `dotnet build CrudWorks.slnx -warnaserror` → 0 warnings / 0 errors; `npm run lint` (oxlint) → no findings; `npm run build` (`tsc -b`, strict, no `any`) → 183 modules — **all three measured on the same tree in wave 4** (by the Orchestrator and re-run by QA); slice reviews | `docs/qa/clean-run-report.md` §"Wave 4 — the full gate on one tree", §3–§4; `docs/reviews/` | Automated + Manual |
+| R-27 | Code quality criterion (warnings as errors, nullable, async, no `any`) | Gate + Manual | `dotnet build CrudWorks.slnx -warnaserror` → 0 warnings / 0 errors; `npm run lint` (oxlint) → no findings; `npm run build` (`tsc -b`, no `any`; `strict` is not enabled yet — documented follow-up) → 183 modules — **all three measured on the same tree in wave 4** (by the Orchestrator and re-run by QA); slice reviews | `docs/qa/clean-run-report.md` §"Wave 4 — the full gate on one tree", §3–§4; `docs/reviews/` | Automated + Manual |
 | R-28 | Functionality criterion (demo works, API tests, browser console clean) | API + E2E + Browser | 166 backend cases, 80 frontend cases, 37/37 live checks, clean-database run — **all measured on the current tree in wave 5**; **the browser console was observed clean** in a real Chromium session over the whole demo flow (zero warnings, zero errors, zero uncaught exceptions) | `docs/qa/clean-run-report.md` §"Wave 5"; `docs/ai/020` | Automated + Manual (the same observation **during the rehearsal** is still open — Orchestrator) |
 | R-29 | Presentation criterion (rehearsed outline, diagram, trade-offs, Q&A) | Manual | Rehearsal — not yet performed | `docs/presentation.md` | Manual |
 | R-30 | GenAI fluency (prompt log, outputs, validation, corrections, rejected suggestions) | Manual | Document inspection | `docs/ai/000`–`docs/ai/015` | Manual |
