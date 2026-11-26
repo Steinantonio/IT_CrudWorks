@@ -1,8 +1,9 @@
 # Presentation — CrudWorks
 
 - **Format:** 10–15 minutes + Q&A
-- **Status:** ready — not yet rehearsed; evidence refreshed to the wave-5 gate
-  (`docs/qa/clean-run-report.md` §"Wave 5", `docs/ai/020`).
+- **Status:** ready — not yet rehearsed; evidence refreshed to the SPEC-008
+  pagination gate (`docs/qa/clean-run-report.md` §"SPEC-008 pagination gate",
+  `docs/ai/037`).
 - **Owner:** orchestrator
 - **Seed credentials:** `demo@crudworks.local` / `Demo123!` (development only)
 
@@ -32,7 +33,9 @@ Run from a clean database. Show, in this order:
    `Demo123!`); point out the header with the display name and the logout action.
 4. **Task list** — show the seeded tasks and the empty/loading/error states.
    The clean run shows 5 seeded tasks, newest first, with the status badge
-   (`2 Todo / 2 InProgress / 1 Done`).
+   (`2 Todo / 2 InProgress / 1 Done`). The list pages with a cursor
+   (`take`/`cursor`); the 5 seeded tasks fit one page, and the E2E checks
+   exercise 2/2/1 pages.
 5. **Create** — title, description, status, due date; validation messages appear
    inline; the new task is visible immediately.
 6. **Edit** — change title and status; show that `createdAtUtc` stays and
@@ -55,8 +58,8 @@ output. Never pretend a step ran.
   see where it lives; the Application layer is testable without a database or HTTP;
   the dependency rule is enforced by project references, not convention.
 - Data model: `Users` (unique normalized email, password hash) and `Tasks`
-  (owner FK, title, description, status, due date, timestamps), with an index on
-  `Tasks.UserId`.
+  (owner FK, title, description, status, due date, timestamps), with a composite
+  index on `Tasks (UserId, CreatedAtUtc, Id)` for keyset pagination.
 - Auth flow: register → validate → PBKDF2 hash → persist; login → verify → JWT
   (HMAC-SHA256, 60 min, `sub` = user id); protected request → validate token →
   resolve the user from `sub` → scope the query by owner.
@@ -91,13 +94,18 @@ Then show the project references and note that Domain has no framework packages.
     `Location`, IDOR.
   - Frontend: Vitest + RTL with `fetch` mocked at the boundary; guard, forms,
     session expiry, 401 seam.
-- Real counts, measured back to back on one tree: **166 backend tests**
-  (Domain 37, Application 57, Infrastructure 25, Api 47), **80 frontend
-  tests**, **37/37 API-level end-to-end checks** against a freshly seeded
-  database, and **6/6** self-tests of the IDOR leak detector — **289 automated
-  checks, all green**. 0 warnings with `-warnaserror`. Line coverage on
-  Domain + Application: **100%** (Domain 112/112, Application 236/236)
-  against an 80% floor.
+- Real counts, measured back to back on the current tree: **216 backend tests**
+  (Domain 37, Application 62, Infrastructure 28, Architecture 6, Api 83),
+  **104 frontend tests** (13 files), **40/40 API-level end-to-end checks** against
+  a freshly seeded database, and **6/6** self-tests of the IDOR leak detector —
+  **366 automated checks, all green**. 0 warnings with `-warnaserror`. Last
+  measured line coverage on Domain + Application: **100%** (Domain 112/112,
+  Application 236/236) against an 80% floor; the pagination slice adds tests but
+  was not re-measured for coverage in this wave.
+- The 216 backend tests include the six architecture-policy tests, eleven OpenAPI
+  contract tests, seven security-header tests, and the pagination suite. The 40
+  E2E checks ran twice on the same database and restored the seeded baseline both
+  times.
 - What is not tested: visual regressions, load, real email delivery (out of scope),
   screen readers (no assistive technology available), and the automated
   axe/Lighthouse audit. The browser console was observed clean in a real
@@ -124,10 +132,10 @@ Be specific; do not say "the AI wrote it".
   rules, and the exact evidence required.
 - **Output:** Domain/Application/Infrastructure/API code and tests; React auth
   module, pages, and tests.
-- **Validated:** build with warnings as errors, **246 automated tests** (166
-  backend + 80 frontend), a **37/37** live API end-to-end run from a clean
-  database, a real-browser keyboard walkthrough against the live API, and two
-  reviews against the contract.
+- **Validated:** build with warnings as errors, **366 automated checks** (216
+  backend + 104 frontend + 40 live API + 6 self-test), a real-browser keyboard
+  walkthrough against the live API, and independent reviews against the contract
+  and the pagination ADR.
 - **Corrected (real examples):**
   - Package versions resolved to a newer target framework; pinned to `10.0.15`.
   - The repository saved implicitly; added `IUnitOfWork.SaveChangesAsync`.
@@ -156,8 +164,9 @@ Be specific; do not say "the AI wrote it".
   production swap (ADR-0003). Cost: provider-specific behavior must be revalidated.
 - **JWT in `sessionStorage`** for a cross-origin SPA demo; XSS exposure is real and
   documented. Production: httpOnly/Secure/SameSite cookie + refresh rotation + CSRF.
-- **No pagination/search** because the demo dataset is small; adding them would
-  expand the contract and the test surface without serving the story.
+- **Keyset pagination now ships** (10/page, server cap 100, opaque versioned
+  cursor, composite index); search and server-side filtering remain out of scope
+  because the story does not need them.
 - **No refresh tokens or revocation**; 60-minute tokens are enough for the demo and
   the limitation is explicit.
 - Lesson: the spec caught scope creep earlier than code review would have; the AI
@@ -165,6 +174,12 @@ Be specific; do not say "the AI wrote it".
   and defaults.
 
 ## 9. Q&A preparation
+
+> The panel named three discussion topics: pagination for larger lists, database
+> constraint errors, and the CI/deployment pipeline. Pagination is implemented
+> (ADR-0006 / SPEC-008); constraint errors are covered by the validation matrix;
+> CI remains deferred by ADR-0007. Evidence: `docs/adr/0006-pagination.md`,
+> `docs/04-requirement-traceability.md`, and `docs/qa/clean-run-report.md` §9.
 
 ### Likely questions and short answers
 
@@ -185,8 +200,13 @@ Be specific; do not say "the AI wrote it".
 - **Are the tests meaningful?** They assert observable behavior: status codes,
   response bodies, ownership, ordering, session clearing. The API tests use a real
   HTTP pipeline and a real SQLite database, not mocks of the thing under test.
+- **How does pagination work?** Keyset, not offset: `(createdAtUtc DESC, id DESC)`,
+  an opaque versioned cursor, 10/page, server cap 100, and a composite index.
+  Invalid cursor → `400` and the client refetches from the first page. The cursor
+  is not an auth token; every query still filters by the token's `sub`.
 - **What would you do with more time?** Refresh-token rotation, rate limiting,
-  structured audit logging, PostgreSQL, Playwright E2E, and pagination.
+  structured audit logging, PostgreSQL, Playwright E2E, and server-side
+  search/filtering.
 - **How would you deploy it?** Containerize the API, serve the built SPA from a CDN
   or static host, PostgreSQL, secrets from the platform, HTTPS only, and a CI gate
   on build + tests + lint.
